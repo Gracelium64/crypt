@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js"
+    "set-webhook": "tsx ./src/scripts/telegram-set-webhook.ts",
+    "start": "node dist/server.js",
+    "test-presign": "node ./scripts/test-presign.js"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +21,10 @@
     "express": "5.2.1",
     "mongoose": "9.6.3",
     "socket.io": "4.8.3",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@aws-sdk/client-s3": "3.1056.0",
+    "mime-types": "2.1.35",
+    "@aws-sdk/s3-request-presigner": "3.1056.0"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",

@@ -5,6 +5,8 @@ import { env } from "./config/env.js";
 import { connectToDatabase } from "./db/connect.js";
 import { messagesRouter } from "./routes/messages.route.js";
 import { providersRouter } from "./routes/providers.route.js";
+import adminRouter from "./routes/admin.route.js";
+import uploadsRouter from "./routes/uploads.route.js";
 import { initRealtime } from "./services/realtime.service.js";
 
 const app = express();
@@ -17,11 +19,14 @@ app.use(
 app.use(express.json({ limit: "4mb" }));
 
 app.get("/health", (_req, res) => {
-  return res.json({ ok: true, service: "crypt-backend" });
+  res.json({ ok: true, service: "crypt-backend" });
+  return;
 });
 
 app.use("/api", messagesRouter);
 app.use("/api", providersRouter);
+app.use("/api", adminRouter);
+app.use("/api", uploadsRouter);
 
 const bootstrap = async () => {
   await connectToDatabase();

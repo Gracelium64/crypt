@@ -39,7 +39,8 @@ messagesRouter.get("/messages", async (req, res) => {
   const parsed = querySchema.safeParse(req.query);
 
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
   }
 
   const { since, provider, chatId, limit } = parsed.data;
@@ -54,14 +55,16 @@ messagesRouter.get("/messages", async (req, res) => {
     .limit(limit)
     .lean();
 
-  return res.json({ data: messages.reverse() });
+  res.json({ data: messages.reverse() });
+  return;
 });
 
 messagesRouter.post("/messages/send", async (req, res) => {
   const parsed = sendSchema.safeParse(req.body);
 
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
   }
 
   const payload = parsed.data;
@@ -97,7 +100,7 @@ messagesRouter.post("/messages/send", async (req, res) => {
 
   broadcastMessage(message);
 
-  return res.status(201).json({
+  res.status(201).json({
     data: {
       message,
       providerPayloadPreview: {
@@ -107,13 +110,15 @@ messagesRouter.post("/messages/send", async (req, res) => {
       providerResult,
     },
   });
+  return;
 });
 
 messagesRouter.post("/messages/mock-inbound", async (req, res) => {
   const parsed = sendSchema.safeParse(req.body);
 
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
   }
 
   const payload = parsed.data;
@@ -138,5 +143,6 @@ messagesRouter.post("/messages/mock-inbound", async (req, res) => {
 
   broadcastMessage(message);
 
-  return res.status(201).json({ data: message });
+  res.status(201).json({ data: message });
+  return;
 });

@@ -158,6 +158,47 @@ button:disabled {
   border: 1px solid #d7dde8;
 }
 
+.file-preview-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border: 1px dashed #bfc8d8;
+  border-radius: 0.55rem;
+  background: #f8fafc;
+}
+
+.file-thumbnail {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 0.35rem;
+  border: 1px solid #bfc8d8;
+}
+
+.file-preview-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.remove-file-button {
+  width: max-content;
+  border: none;
+  background: #ef4444;
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.remove-file-button:hover {
+  background: #dc2626;
+}
+
 @media (max-width: 720px) {
   .controls-grid {
     grid-template-columns: 1fr;

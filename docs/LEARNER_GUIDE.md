@@ -23,6 +23,10 @@ Build a live messaging demo with two key patterns:
   - read messages, send outbound, simulate inbound.
 - `backend/src/routes/providers.route.ts`
   - Telegram and WhatsApp webhook handlers.
+- `backend/src/routes/admin.route.ts` & `backend/src/scripts/telegram-set-webhook.ts`
+  - safe admin routes and CLI tool to register webhooks.
+- `backend/src/routes/uploads.route.ts` & `backend/src/services/media.service.ts`
+  - S3 media uploads (presigned URLs and proxy fallbacks) for hosting media attachments.
 - `backend/src/services/crypto.service.ts`
   - AES-GCM encrypt/decrypt with marker prefix.
 - `frontendReactJs/src/App.tsx`
@@ -34,6 +38,8 @@ Build a live messaging demo with two key patterns:
 - Polling fallback avoids demo failure when websocket transport is blocked.
 - MongoDB gives flexible storage while message schema evolves.
 - TypeScript helps prevent route and payload shape mistakes.
+- Presigned S3 PUT URLs minimize server resource usage by offloading file uploads directly to AWS S3.
+- Base64 upload API fallback ensures front-end developers can test image pipelines without local AWS credentials.
 
 ## Common Mistakes To Avoid
 

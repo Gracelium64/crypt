@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
 
@@ -33,11 +33,34 @@ function App() {
   const [to, setTo] = useState("phone-b");
   const [text, setText] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [encrypt, setEncrypt] = useState(true);
   const [isRealtime, setIsRealtime] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [lastSync, setLastSync] = useState<string>("");
   const [busy, setBusy] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setFilePreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setFilePreview(previewUrl);
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [file]);
+
+  const removeFile = () => {
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const filteredMessages = useMemo(
     () =>
@@ -121,6 +144,59 @@ function App() {
   const sendMessage = async () => {
     setBusy(true);
     try {
+      // Determine final image URL: either existing imageUrl or uploaded file
+      let finalImageUrl = imageUrl;
+
+      if (file) {
+        try {
+          const presignResp = await fetch(`${apiBase}/api/uploads/presign`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: file.name,
+              contentType: file.type,
+            }),
+          });
+          const presignJson = await presignResp.json();
+          if (!presignResp.ok)
+            throw new Error(presignJson.error || "presign failed");
+
+          const { uploadUrl, objectUrl } = presignJson;
+
+          const putResp = await fetch(uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+          if (!putResp.ok) throw new Error("Upload failed");
+
+          finalImageUrl = objectUrl;
+        } catch (err) {
+          // fallback: upload via server base64 proxy
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+
+            const proxyResp = await fetch(`${apiBase}/api/uploads/base64`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataUrl }),
+            });
+            const proxyJson = await proxyResp.json();
+            if (!proxyResp.ok)
+              throw new Error(proxyJson.error || "proxy upload failed");
+            finalImageUrl = proxyJson.url;
+          } catch (proxyErr) {
+            console.error("Upload failed", err, proxyErr);
+            throw new Error("File upload failed");
+          }
+        }
+      }
+
       const response = await fetch(`${apiBase}/api/messages/send`, {
         method: "POST",
         headers: {
@@ -133,7 +209,9 @@ function App() {
           chatId,
           text,
           encrypt,
-          attachments: imageUrl ? [{ type: "image", url: imageUrl }] : [],
+          attachments: finalImageUrl
+            ? [{ type: "image", url: finalImageUrl }]
+            : [],
         }),
       });
 
@@ -143,27 +221,102 @@ function App() {
 
       setText("");
       setImageUrl("");
+      setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const createMockInbound = async () => {
-    await fetch(`${apiBase}/api/messages/mock-inbound`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        provider,
-        from,
-        to,
-        chatId,
-        text: "Inbound test from provider webhook",
-        encrypt,
-        attachments: imageUrl ? [{ type: "image", url: imageUrl }] : [],
-      }),
-    });
+    setBusy(true);
+    try {
+      let finalImageUrl = imageUrl;
+
+      if (file) {
+        try {
+          const presignResp = await fetch(`${apiBase}/api/uploads/presign`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: file.name,
+              contentType: file.type,
+            }),
+          });
+          const presignJson = await presignResp.json();
+          if (!presignResp.ok)
+            throw new Error(presignJson.error || "presign failed");
+
+          const { uploadUrl, objectUrl } = presignJson;
+
+          const putResp = await fetch(uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+          if (!putResp.ok) throw new Error("Upload failed");
+
+          finalImageUrl = objectUrl;
+        } catch (err) {
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+
+            const proxyResp = await fetch(`${apiBase}/api/uploads/base64`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataUrl }),
+            });
+            const proxyJson = await proxyResp.json();
+            if (!proxyResp.ok)
+              throw new Error(proxyJson.error || "proxy upload failed");
+            finalImageUrl = proxyJson.url;
+          } catch (proxyErr) {
+            console.error("Simulation upload failed", err, proxyErr);
+            alert("SQS or Base64 upload failed. Check server config.");
+            return;
+          }
+        }
+      }
+
+      const textVal =
+        text.trim() || "Inbound message simulating webhook callback";
+
+      await fetch(`${apiBase}/api/messages/mock-inbound`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider,
+          from,
+          to,
+          chatId,
+          text: textVal,
+          encrypt,
+          attachments: finalImageUrl
+            ? [{ type: "image", url: finalImageUrl }]
+            : [],
+        }),
+      });
+
+      setText("");
+      setImageUrl("");
+      setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      console.error("Simulation failed", err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -229,6 +382,40 @@ function App() {
           />
         </label>
 
+        <label>
+          Upload Image
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {file && (
+          <div className="file-preview-container">
+            {filePreview && (
+              <img
+                src={filePreview}
+                alt="upload preview"
+                className="file-thumbnail"
+              />
+            )}
+            <div className="file-preview-details">
+              <span>
+                <strong>Selected:</strong> {file.name} (
+                {Math.round(file.size / 1024)} KB)
+              </span>
+              <button
+                type="button"
+                className="remove-file-button"
+                onClick={removeFile}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="composer-actions">
           <label className="inline-check">
             <input
@@ -238,7 +425,10 @@ function App() {
             />
             Encrypt before sending
           </label>
-          <button onClick={sendMessage} disabled={busy || (!text && !imageUrl)}>
+          <button
+            onClick={sendMessage}
+            disabled={busy || (!text && !imageUrl && !file)}
+          >
             Send Outbound
           </button>
           <button onClick={createMockInbound}>Simulate Inbound</button>
@@ -269,11 +459,10 @@ function App() {
                 <strong>Decrypted:</strong> {message.decryptedText || "(empty)"}
               </p>
               <p>
-                <strong>Transport:</strong>{" "}
-                <p>
-                  <strong>Delivery:</strong>{" "}
-                  {message.deliveryStatus ?? "unknown"}
-                </p>
+                <strong>Delivery:</strong> {message.deliveryStatus ?? "unknown"}
+              </p>
+              <p>
+                <strong>Transport (Raw/Ciphertext):</strong>{" "}
                 {message.encryptedText || message.rawText || "(empty)"}
               </p>
               {message.attachments.length > 0 && (

@@ -48,7 +48,12 @@ Implemented now:
 - Provider selection (`telegram`, `whatsapp`, `mock`)
 - Send outbound text with optional encryption
 - Simulate inbound webhook messages for demo testing
-- Optional image URL attachment in messages
+- Full Image Attachment pipeline:
+  - Frontend image upload preview, file selection & clearing.
+  - S3 Direct Upload: secure direct-to-S3 browser upload using secure presigned PUT URLs, offloading backend server workload.
+  - Base64 Proxy Upload: automated proxy server-side fallback if AWS credentials aren't initialized yet.
+  - Inbound WhatsApp file pipeline: auto-download and store images directly on S3 from Meta callbacks.
+- Telegram Webhook Admin CLI and API endpoints.
 
 Planned next:
 
