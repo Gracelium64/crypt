@@ -45,15 +45,21 @@ Implemented now:
 
 - Realtime updates through Socket.IO
 - Polling fallback every 10 seconds when socket disconnects
-- Provider selection (`telegram`, `whatsapp`, `mock`)
-- Send outbound text with optional encryption
-- Simulate inbound webhook messages for demo testing
+- Provider sidebar navigation for Telegram and WhatsApp
+- Provider web sign-in links to the official web clients
+- Conversation inbox derived from stored messages
+- Secure and plain reply modes for each selected thread
 - Full Image Attachment pipeline:
   - Frontend image upload preview, file selection & clearing.
-  - S3 Direct Upload: secure direct-to-S3 browser upload using secure presigned PUT URLs, offloading backend server workload.
-  - Base64 Proxy Upload: automated proxy server-side fallback if AWS credentials aren't initialized yet.
-  - Inbound WhatsApp file pipeline: auto-download and store images directly on S3 from Meta callbacks.
+  - Formidable multipart upload: browser uploads files to the backend which processes them with `formidable`.
+  - Cloudinary hosting: backend uploads media to Cloudinary for stable public URLs (proxy and base64 upload fallback supported).
+  - Inbound WhatsApp file pipeline: auto-download and store images in Cloudinary from Meta callbacks.
 - Telegram Webhook Admin CLI and API endpoints.
+
+Notes:
+
+- Telegram and WhatsApp web clients are used for browser sign-in and operator access.
+- The backend still uses Telegram bot credentials and WhatsApp Cloud API credentials for message delivery and inbound webhook handling.
 
 Planned next:
 

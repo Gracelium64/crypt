@@ -7,6 +7,10 @@ import { messagesRouter } from "./routes/messages.route.js";
 import { providersRouter } from "./routes/providers.route.js";
 import adminRouter from "./routes/admin.route.js";
 import uploadsRouter from "./routes/uploads.route.js";
+import keysRouter from "./routes/keys.route.js";
+import linkRouter from "./routes/link.route.js";
+import authRouter from "./routes/auth.route.js";
+import providerConnectionsRouter from "./routes/providerConnections.route.js";
 import { initRealtime } from "./services/realtime.service.js";
 
 const app = express();
@@ -25,8 +29,12 @@ app.get("/health", (_req, res) => {
 
 app.use("/api", messagesRouter);
 app.use("/api", providersRouter);
+app.use("/api", authRouter);
 app.use("/api", adminRouter);
 app.use("/api", uploadsRouter);
+app.use("/api", keysRouter);
+app.use("/api", linkRouter);
+app.use("/api", providerConnectionsRouter);
 
 const bootstrap = async () => {
   await connectToDatabase();

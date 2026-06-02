@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Test helper: request a presigned PUT URL from local backend and upload a small PNG buffer
+// Test helper: upload a small payload via the backend base64 proxy (Cloudinary)
 // Usage: node ./scripts/test-presign.js [serverUrl]
 
 const server =
@@ -7,33 +7,21 @@ const server =
 
 (async () => {
   try {
-    console.log("Requesting presign from", server);
-    const res = await fetch(`${server}/api/uploads/presign`, {
+    console.log("Uploading via base64 proxy to", server);
+    const payload = Buffer.from("hello from test-presign").toString("base64");
+    const dataUrl = `data:text/plain;base64,${payload}`;
+    const res = await fetch(`${server}/api/uploads/base64`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: "test.txt", contentType: "text/plain" }),
+      body: JSON.stringify({ dataUrl }),
     });
     const json = await res.json();
     if (!res.ok) {
-      console.error("Presign failed", json);
+      console.error("Upload failed", json);
       process.exit(2);
     }
 
-    const { uploadUrl, objectUrl } = json;
-    console.log("Got uploadUrl, uploading sample payload...");
-
-    const putRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain" },
-      body: "hello from test-presign",
-    });
-
-    if (!putRes.ok) {
-      console.error("PUT to signed URL failed", await putRes.text());
-      process.exit(3);
-    }
-
-    console.log("Upload succeeded. Object available at:", objectUrl);
+    console.log("Upload succeeded. Hosted URL:", json.url);
     process.exit(0);
   } catch (err) {
     console.error("Error in test-presign", err);

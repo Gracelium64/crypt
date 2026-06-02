@@ -92,3 +92,37 @@ adminRouter.post(
 );
 
 export default adminRouter;
+
+adminRouter.post(
+  "/admin/providers/test",
+  requireAdmin,
+  async (req: any, res: any): Promise<void> => {
+    const { provider, chatId, text } = req.body ?? {};
+    if (!provider || !chatId) {
+      res.status(400).json({ ok: false, error: "missing provider or chatId" });
+      return;
+    }
+
+    try {
+      const { sendToProvider } =
+        await import("../services/providers.service.js");
+      const result = await sendToProvider({
+        provider,
+        chatId,
+        to: chatId,
+        text: text ?? "test message",
+        attachments: [],
+      });
+      res.status(200).json({ ok: true, data: result });
+      return;
+    } catch (err) {
+      res
+        .status(500)
+        .json({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      return;
+    }
+  },
+);

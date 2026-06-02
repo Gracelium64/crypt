@@ -5,7 +5,7 @@
 - **Base estimate:** 6-8 hours (focused, experienced dev)
 - **With 30% buffer:** 8-10.5 hours
 - **Includes:**
-  - Credential setup (Telegram, WhatsApp, AWS S3)
+  - Credential setup (Telegram, WhatsApp, Cloudinary)
   - Webhook registration
   - Render deployment
   - Live verification
@@ -22,9 +22,8 @@
 - [ ] Telegram Webhook Secret (optional, for extra security)
 - [ ] WhatsApp Graph API Access Token (from Facebook Developer Console)
 - [ ] WhatsApp Phone Number ID
-- [ ] AWS S3 Bucket Name
-- [ ] AWS Access Key ID & Secret Access Key
-- [ ] AWS Region (e.g., us-east-1)
+- [ ] Cloudinary cloud name
+- [ ] Cloudinary API key & API secret
 
 ### 2. Configure Environment Variables
 
@@ -32,15 +31,14 @@
 - Fill in all required values:
   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`
   - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
-  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`
+  - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
   - `MONGODB_URI` (your MongoDB connection string)
   - `FRONTEND_URL`, `BACKEND_URL` (for CORS)
 
-### 3. Set Up AWS S3
+### 3. Set Up Cloudinary
 
-- Create a new S3 bucket (if needed)
-- Set CORS policy (see docs/MAINTAINER_GUIDE.md)
-- Set IAM user permissions for programmatic access
+- Create a Cloudinary account (if needed)
+- Note your `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`
 
 ### 4. Register Telegram Webhook
 
@@ -64,7 +62,7 @@
 ### 7. Live Verification
 
 - Send test messages from Telegram and WhatsApp
-- Upload images from frontend, confirm S3 upload and media delivery
+- Upload images from frontend, confirm Cloudinary upload and media delivery
 - Check MongoDB for message records
 - Confirm real-time and polling updates in frontend
 

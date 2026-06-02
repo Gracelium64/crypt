@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export type ProviderName = "telegram" | "whatsapp" | "mock";
+export type ProviderName = "telegram" | "whatsapp";
 export type MessageDirection = "inbound" | "outbound";
 
 const attachmentSchema = new mongoose.Schema(
@@ -15,7 +15,7 @@ const messageSchema = new mongoose.Schema(
   {
     provider: {
       type: String,
-      enum: ["telegram", "whatsapp", "mock"],
+      enum: ["telegram", "whatsapp"],
       required: true,
     },
     direction: { type: String, enum: ["inbound", "outbound"], required: true },
@@ -25,13 +25,14 @@ const messageSchema = new mongoose.Schema(
     providerMessageId: { type: String },
     deliveryStatus: {
       type: String,
-      enum: ["queued", "sent", "mocked", "failed"],
+      enum: ["queued", "sent", "failed"],
       default: "queued",
     },
     providerResponse: { type: mongoose.Schema.Types.Mixed },
-    rawText: { type: String, default: "" },
+    // Store ciphertext only. Plaintext is intentionally not persisted for E2E.
     encryptedText: { type: String, default: "" },
-    decryptedText: { type: String, default: "" },
+    // If inbound plaintext was omitted for privacy, mark it here.
+    bodyOmitted: { type: Boolean, default: false },
     attachments: { type: [attachmentSchema], default: [] },
   },
   { timestamps: true },

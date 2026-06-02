@@ -1,13 +1,43 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Message } from "../models/message.model.js";
-import {
-  decryptMarkedText,
-  isMarkedCiphertext,
-} from "../services/crypto.service.js";
+import { Link } from "../models/link.model.js";
+import { ProviderConnection } from "../models/providerConnection.model.js";
+import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
 import { env } from "../config/env.js";
 import { downloadAndUploadWhatsappMedia } from "../services/media.service.js";
+
+const providerCards = [
+  {
+    provider: "telegram",
+    label: "Telegram",
+    icon: "✈",
+    webUrl: "https://web.telegram.org/k/",
+    backendReady: Boolean(env.TELEGRAM_BOT_TOKEN),
+    webhookReady: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
+    setupNotes: [
+      "Bot token is still required for sending and receiving messages.",
+      "Webhook verification stays enabled for live inbound updates.",
+    ],
+  },
+  {
+    provider: "whatsapp",
+    label: "WhatsApp",
+    icon: "◉",
+    webUrl: "https://web.whatsapp.com/",
+    backendReady: Boolean(
+      env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID,
+    ),
+    webhookReady: Boolean(
+      env.WHATSAPP_VERIFY_TOKEN && env.WHATSAPP_VERIFY_TOKEN !== "replace_me",
+    ),
+    setupNotes: [
+      "Cloud API credentials are still required for message delivery.",
+      "Webhook verification remains the live inbound bridge.",
+    ],
+  },
+];
 
 const telegramInboundSchema = z.object({
   message: z
@@ -52,6 +82,16 @@ const whatsappInboundSchema = z.object({
 
 export const providersRouter = Router();
 
+providersRouter.get("/providers/status", (_req, res) => {
+  res.json({
+    data: providerCards.map((card) => ({
+      ...card,
+      readiness: card.backendReady ? "ready" : "needs-setup",
+    })),
+  });
+  return;
+});
+
 providersRouter.post("/providers/telegram/webhook", async (req, res) => {
   // If a webhook secret is configured, verify Telegram's secret header
   const incomingSecret =
@@ -74,6 +114,61 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
   const msg = parsed.data.message;
   const incomingRaw = msg.text ?? "";
 
+  // Detect a linking code message (user asked the hosted bot to link)
+  try {
+    const match = incomingRaw.match(/\bLINK\s+([A-Za-z0-9]{4,12})\b/i);
+    if (match) {
+      const code = match[1].toUpperCase();
+      const link = await Link.findOne({
+        code,
+        provider: "telegram",
+        completed: false,
+        expiresAt: { $gt: new Date() },
+      });
+      if (link) {
+        link.completed = true;
+        link.providerChatId = String(msg.chat.id);
+        link.providerDisplayName = String(
+          msg.from?.id ?? msg.chat?.id ?? "unknown",
+        );
+        await link.save();
+        console.log(
+          "Link code completed via Telegram webhook:",
+          code,
+          msg.chat.id,
+        );
+
+        // Persist provider connection for the claiming account if present
+        try {
+          if (link.claimedAccountId) {
+            const existing = await ProviderConnection.findOne({
+              accountId: link.claimedAccountId,
+              provider: "telegram",
+              providerChatId: String(msg.chat.id),
+            });
+            if (!existing) {
+              await ProviderConnection.create({
+                accountId: link.claimedAccountId,
+                provider: "telegram",
+                providerChatId: String(msg.chat.id),
+                displayName: link.providerDisplayName,
+              });
+              console.log(
+                "Created ProviderConnection for account",
+                link.claimedAccountId.toString(),
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Failed to create ProviderConnection:", err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Link code detection error (telegram):", err);
+  }
+
+  const isEncrypted = isMarkedCiphertext(incomingRaw);
   const created = await Message.create({
     provider: "telegram",
     direction: "inbound",
@@ -82,11 +177,8 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
     chatId: String(msg.chat.id),
     providerMessageId: String(msg.message_id),
     deliveryStatus: "sent",
-    rawText: incomingRaw,
-    encryptedText: incomingRaw,
-    decryptedText: isMarkedCiphertext(incomingRaw)
-      ? decryptMarkedText(incomingRaw)
-      : incomingRaw,
+    encryptedText: isEncrypted ? incomingRaw : "",
+    bodyOmitted: !isEncrypted,
     attachments: [],
   });
 
@@ -124,6 +216,61 @@ providersRouter.post("/providers/whatsapp/webhook", async (req, res) => {
       for (const msg of messages) {
         const incomingRaw = msg.text?.body ?? "";
 
+        // Detect a linking code message for WhatsApp
+        try {
+          const match = incomingRaw.match(/\bLINK\s+([A-Za-z0-9]{4,12})\b/i);
+          if (match) {
+            const code = match[1].toUpperCase();
+            const link = await Link.findOne({
+              code,
+              provider: "whatsapp",
+              completed: false,
+              expiresAt: { $gt: new Date() },
+            });
+            if (link) {
+              link.completed = true;
+              link.providerChatId = String(msg.from);
+              link.providerDisplayName = String(
+                change.value.metadata?.display_phone_number ??
+                  msg.from ??
+                  "unknown",
+              );
+              await link.save();
+              console.log(
+                "Link code completed via WhatsApp webhook:",
+                code,
+                msg.from,
+              );
+
+              try {
+                if (link.claimedAccountId) {
+                  const existing = await ProviderConnection.findOne({
+                    accountId: link.claimedAccountId,
+                    provider: "whatsapp",
+                    providerChatId: String(msg.from),
+                  });
+                  if (!existing) {
+                    await ProviderConnection.create({
+                      accountId: link.claimedAccountId,
+                      provider: "whatsapp",
+                      providerChatId: String(msg.from),
+                      displayName: link.providerDisplayName,
+                    });
+                    console.log(
+                      "Created ProviderConnection for account",
+                      link.claimedAccountId.toString(),
+                    );
+                  }
+                }
+              } catch (err) {
+                console.error("Failed to create ProviderConnection:", err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Link code detection error (whatsapp):", err);
+        }
+
         let attachments: Array<{ type: "image"; url: string }> = [];
         if (msg.image?.id) {
           try {
@@ -137,6 +284,7 @@ providersRouter.post("/providers/whatsapp/webhook", async (req, res) => {
           }
         }
 
+        const isEncrypted = isMarkedCiphertext(incomingRaw);
         const created = await Message.create({
           provider: "whatsapp",
           direction: "inbound",
@@ -145,11 +293,8 @@ providersRouter.post("/providers/whatsapp/webhook", async (req, res) => {
           chatId: msg.from,
           providerMessageId: msg.id,
           deliveryStatus: "sent",
-          rawText: incomingRaw,
-          encryptedText: incomingRaw,
-          decryptedText: isMarkedCiphertext(incomingRaw)
-            ? decryptMarkedText(incomingRaw)
-            : incomingRaw,
+          encryptedText: isEncrypted ? incomingRaw : "",
+          bodyOmitted: !isEncrypted,
           attachments,
         });
 

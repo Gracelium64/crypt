@@ -20,13 +20,13 @@ Build a live messaging demo with two key patterns:
 - `backend/src/server.ts`
   - app bootstrap, middleware, routers, Socket.IO initialization.
 - `backend/src/routes/messages.route.ts`
-  - read messages, send outbound, simulate inbound.
+- read messages, send outbound, inbound handled via provider webhooks.
 - `backend/src/routes/providers.route.ts`
   - Telegram and WhatsApp webhook handlers.
 - `backend/src/routes/admin.route.ts` & `backend/src/scripts/telegram-set-webhook.ts`
   - safe admin routes and CLI tool to register webhooks.
-- `backend/src/routes/uploads.route.ts` & `backend/src/services/media.service.ts`
-  - S3 media uploads (presigned URLs and proxy fallbacks) for hosting media attachments.
+  - `backend/src/routes/uploads.route.ts` & `backend/src/services/media.service.ts`
+  - Cloudinary media uploads (Formidable multipart and base64 proxy fallbacks) for hosting media attachments.
 - `backend/src/services/crypto.service.ts`
   - AES-GCM encrypt/decrypt with marker prefix.
 - `frontendReactJs/src/App.tsx`
@@ -38,8 +38,8 @@ Build a live messaging demo with two key patterns:
 - Polling fallback avoids demo failure when websocket transport is blocked.
 - MongoDB gives flexible storage while message schema evolves.
 - TypeScript helps prevent route and payload shape mistakes.
-- Presigned S3 PUT URLs minimize server resource usage by offloading file uploads directly to AWS S3.
-- Base64 upload API fallback ensures front-end developers can test image pipelines without local AWS credentials.
+  - Using Cloudinary offloads hosting; Formidable-based multipart endpoint accepts browser FormData uploads.
+  - Base64 upload API fallback ensures front-end developers can test image pipelines without Cloudinary credentials in dev.
 
 ## Common Mistakes To Avoid
 
@@ -53,7 +53,7 @@ Build a live messaging demo with two key patterns:
 1. Add a filter for only inbound messages in the UI.
 2. Add delivery status field (`queued`, `sent`, `failed`) to message schema and render it.
 3. Add simple retry endpoint for failed outbound provider sends.
-4. Replace `mock-inbound` with one real Telegram test webhook flow.
+4. Replace the demo simulation with one real Telegram test webhook flow.
 
 ## Interview-Framing Style Summary (Optional)
 
