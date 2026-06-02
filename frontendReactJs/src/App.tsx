@@ -2,6 +2,23 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import "./App.css";
+import { useAuth } from "./context/useAuth";
+import KeyManager from "./components/KeyManager";
+import OnboardingPanel from "./components/OnboardingPanel";
+import LinkWizard from "./components/LinkWizard";
+import ConnectionsPanel from "./components/ConnectionsPanel";
+import Composer from "./components/Composer";
+import Timeline from "./components/Timeline";
+import { apiFetch, apiJson } from "./lib/api";
+import {
+  isSecureCiphertext,
+  arrayBufferToBase64,
+  base64ToArrayBuffer,
+  fingerprintFromPubKey,
+  deriveAesGcmKey,
+  decryptFromSender,
+} from "./lib/crypto";
+import { sendMessageService } from "./services/messages";
 
 type Provider = "telegram" | "whatsapp";
 type MessageProvider = Provider;
@@ -78,145 +95,6 @@ const providerMeta: Record<
 
 const supportedProviders: Provider[] = ["telegram", "whatsapp"];
 
-const secureMarker = "[CRYPT:v1]";
-
-const isSecureCiphertext = (value: string) => value.startsWith(secureMarker);
-
-// Helpers for WebCrypto key operations and fingerprinting
-const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-};
-
-const base64ToHex = (b64: string) => {
-  const bin = atob(b64);
-  const arr = [];
-  for (let i = 0; i < bin.length; i++) {
-    arr.push(bin.charCodeAt(i).toString(16).padStart(2, "0"));
-  }
-  return arr.join("");
-};
-
-const fingerprintFromPubKey = async (pubRaw: ArrayBuffer) => {
-  const hashBuffer = await crypto.subtle.digest("SHA-256", pubRaw);
-  const b64 = arrayBufferToBase64(hashBuffer);
-  // short, human-friendly: first 12 hex chars grouped
-  const hex = base64ToHex(b64).toUpperCase();
-  return `${hex.slice(0, 4)} ${hex.slice(4, 8)} ${hex.slice(8, 12)}`;
-};
-
-// base64 -> ArrayBuffer
-const base64ToArrayBuffer = (b64: string) => {
-  const binary = atob(b64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-};
-
-// Import public raw key (base64 raw format) into CryptoKey
-const importPublicKeyFromBase64 = async (b64: string) => {
-  const ab = base64ToArrayBuffer(b64);
-  return await crypto.subtle.importKey(
-    "raw",
-    ab,
-    { name: "ECDH", namedCurve: "P-256" },
-    false,
-    [],
-  );
-};
-
-const importPrivateJwkKey = async (jwk: any) =>
-  crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    { name: "ECDH", namedCurve: "P-256" },
-    false,
-    ["deriveBits"],
-  );
-
-// Derive an AES-GCM CryptoKey from our private JWK and their public key (base64 raw)
-const deriveAesGcmKey = async (privJwkObj: any, otherPubB64: string) => {
-  const privKey = await importPrivateJwkKey(privJwkObj);
-  const pubKey = await importPublicKeyFromBase64(otherPubB64);
-  const sharedBits = await crypto.subtle.deriveBits(
-    { name: "ECDH", public: pubKey },
-    privKey,
-    256,
-  );
-
-  const hkdfKey = await crypto.subtle.importKey(
-    "raw",
-    sharedBits,
-    "HKDF",
-    false,
-    ["deriveKey"],
-  );
-
-  const salt = new Uint8Array([]);
-  const info = new TextEncoder().encode("crypt-companion v1");
-
-  const aesKey = await crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt, info },
-    hkdfKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-
-  return aesKey;
-};
-
-const encryptForRecipient = async (
-  plaintext: string,
-  privJwkObj: any,
-  recipientPubB64: string,
-) => {
-  const aesKey = await deriveAesGcmKey(privJwkObj, recipientPubB64);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(plaintext);
-  const cipherBuffer = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    encoded,
-  );
-  const combined = new Uint8Array(iv.byteLength + cipherBuffer.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(cipherBuffer), iv.byteLength);
-  return secureMarker + arrayBufferToBase64(combined.buffer);
-};
-
-const decryptFromSender = async (
-  secureText: string,
-  privJwkObj: any,
-  senderPubB64: string,
-) => {
-  if (!secureText || !secureText.startsWith(secureMarker)) return null;
-  try {
-    const payload = secureText.slice(secureMarker.length);
-    const ab = base64ToArrayBuffer(payload);
-    const arr = new Uint8Array(ab);
-    const iv = arr.slice(0, 12);
-    const cipher = arr.slice(12);
-    const aesKey = await deriveAesGcmKey(privJwkObj, senderPubB64);
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
-      aesKey,
-      cipher,
-    );
-    return new TextDecoder().decode(plain);
-  } catch (err) {
-    console.error("decrypt failed", err);
-    return null;
-  }
-};
-
 const toHumanTime = (value?: string) => {
   if (!value) {
     return "Just now";
@@ -233,75 +111,11 @@ const trimPreview = (text: string) => {
   return `${text.slice(0, 93)}...`;
 };
 
-type UploadOpts = {
-  resourceType?: "image" | "raw" | "auto";
-  encrypted?: boolean;
-  filename?: string;
-};
+// upload helper types moved to `src/services/messages.ts`
 
-const uploadSelectedImage = async (
-  fileOrBlob: File | Blob,
-  opts?: UploadOpts,
-) => {
-  // Use multipart/form-data upload handled by Formidable on the backend
-  const form = new FormData();
-  const filename =
-    opts?.filename ??
-    (fileOrBlob instanceof File ? fileOrBlob.name : "upload.bin");
-  form.append("file", fileOrBlob as Blob, filename);
-  if (opts?.resourceType) form.append("resourceType", opts.resourceType);
-  if (opts?.encrypted) form.append("encrypted", "1");
+// uploadSelectedImage moved to `src/services/messages.ts` and used by sendMessageService
 
-  const resp = await fetch(`${apiBase}/api/uploads/formidable`, {
-    method: "POST",
-    body: form,
-  });
-
-  const json = await resp.json();
-  if (!resp.ok) {
-    throw new Error(json.error || "upload failed");
-  }
-
-  return json.url as string;
-};
-
-// Encrypt a File for a recipient using the ECDH-derived AES-GCM key.
-const encryptFileForRecipient = async (
-  file: File,
-  privJwkObj: any,
-  recipientPubB64: string,
-) => {
-  const aesKey = await deriveAesGcmKey(privJwkObj, recipientPubB64);
-  const fileBuf = await file.arrayBuffer();
-
-  const header = JSON.stringify({
-    filename: file.name,
-    contentType: file.type,
-  });
-  const headerBytes = new TextEncoder().encode(header);
-  const headerLen = headerBytes.length;
-
-  const wrapper = new Uint8Array(4 + headerLen + fileBuf.byteLength);
-  const view = new DataView(wrapper.buffer);
-  view.setUint32(0, headerLen);
-  wrapper.set(headerBytes, 4);
-  wrapper.set(new Uint8Array(fileBuf), 4 + headerLen);
-
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const cipherBuffer = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    wrapper.buffer,
-  );
-  const combined = new Uint8Array(iv.byteLength + cipherBuffer.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(cipherBuffer), iv.byteLength);
-
-  const blob = new Blob([combined.buffer], {
-    type: "application/octet-stream",
-  });
-  return { blob, filename: `${file.name}.enc` };
-};
+// (moved to src/lib/crypto.ts)
 
 const getProviderLabel = (provider: Provider) => providerMeta[provider].label;
 
@@ -338,18 +152,11 @@ function App() {
   const [linkDeepMobile, setLinkDeepMobile] = useState<string | null>(null);
   const [linkDeepWeb, setLinkDeepWeb] = useState<string | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(
-    () => localStorage.getItem("crypt:token") ?? null,
-  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const [me, setMe] = useState<{
-    email: string;
-    displayName?: string;
-    id?: string;
-  } | null>(null);
+  const auth = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verifyOwner, setVerifyOwner] = useState<string | null>(null);
   const [verifyPubKey, setVerifyPubKey] = useState<string | null>(null);
@@ -382,9 +189,7 @@ function App() {
   const checkKeyRegistered = async () => {
     if (!localOwnerId || !pubKeyB64) return setKeyRegistered(false);
     try {
-      const resp = await fetch(
-        `${apiBase}/api/keys/${encodeURIComponent(localOwnerId)}`,
-      );
+      const resp = await apiFetch(`/keys/${encodeURIComponent(localOwnerId)}`);
       if (!resp.ok) return setKeyRegistered(false);
       const j = await resp.json();
       const remote = j?.data?.publicKey ?? null;
@@ -428,18 +233,17 @@ function App() {
   const registerPublicKey = async () => {
     if (!pubKeyB64) return alert("Generate a key first");
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (authToken) headers.Authorization = `Bearer ${authToken}`;
-      if (!me?.email && !localOwnerId)
+      if (!auth.user?.email && !localOwnerId)
         return alert("No owner ID available (log in or enter a local ID)");
-      const resp = await fetch(`${apiBase}/api/keys/register`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ publicKey: pubKeyB64 }),
-      });
-      if (!resp.ok) throw new Error("register failed");
+      await apiJson(
+        "/keys/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publicKey: pubKeyB64 }),
+        },
+        auth.token,
+      );
       showToast("Public key registered");
       void loadConnectionsList();
       await checkKeyRegistered();
@@ -489,7 +293,7 @@ function App() {
     providerStatuses.find((item) => item.provider === provider) ?? null;
 
   const loadProviderStatuses = async () => {
-    const response = await fetch(`${apiBase}/api/providers/status`);
+    const response = await apiFetch(`/providers/status`);
     if (!response.ok) {
       throw new Error("Could not load provider status");
     }
@@ -499,8 +303,8 @@ function App() {
   };
 
   const loadConversations = async (currentProvider: Provider) => {
-    const response = await fetch(
-      `${apiBase}/api/conversations?provider=${currentProvider}&limit=200`,
+    const response = await apiFetch(
+      `/conversations?provider=${currentProvider}&limit=200`,
     );
     if (!response.ok) {
       throw new Error("Could not load conversations");
@@ -539,9 +343,7 @@ function App() {
       params.set("since", since);
     }
 
-    const response = await fetch(
-      `${apiBase}/api/messages?${params.toString()}`,
-    );
+    const response = await apiFetch(`/messages?${params.toString()}`);
     if (!response.ok) {
       throw new Error("Could not load messages");
     }
@@ -570,9 +372,7 @@ function App() {
 
         if (pubCache[ownerId] === undefined) {
           try {
-            const resp = await fetch(
-              `${apiBase}/api/keys/${encodeURIComponent(ownerId)}`,
-            );
+            const resp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`);
             if (!resp.ok) {
               pubCache[ownerId] = null;
             } else {
@@ -616,43 +416,17 @@ function App() {
     void loadProviderStatuses();
   }, []);
 
-  // Load current account when token is present
-  useEffect(() => {
-    if (!authToken) {
-      setMe(null);
-      return;
-    }
-
-    (async () => {
-      try {
-        const resp = await fetch(`${apiBase}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!resp.ok) {
-          setMe(null);
-          return;
-        }
-        const j = await resp.json();
-        setMe(j.data ?? null);
-      } catch (err) {
-        setMe(null);
-      }
-    })();
-  }, [authToken]);
+  // Auth context manages the current account
 
   // Load provider connections for the signed-in account
   const loadConnectionsList = async () => {
-    if (!authToken) {
+    if (!auth?.token) {
       setConnections([]);
       return;
     }
     setConnectionsBusy(true);
     try {
-      const resp = await fetch(`${apiBase}/api/provider/connections`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!resp.ok) throw new Error("failed");
-      const j = await resp.json();
+      const j = await apiJson("/provider/connections", {}, auth.token);
       setConnections(j.data ?? []);
     } catch (err) {
       console.error(err);
@@ -665,12 +439,12 @@ function App() {
   useEffect(() => {
     void loadConnectionsList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authToken]);
+  }, [auth.token]);
 
   // Auto-derive local owner id from signed-in account
   useEffect(() => {
-    if (me?.email) setLocalOwnerId(me.email);
-  }, [me]);
+    if (auth.user?.email) setLocalOwnerId(auth.user.email);
+  }, [auth.user]);
 
   useEffect(() => {
     void checkKeyRegistered();
@@ -680,24 +454,18 @@ function App() {
   const submitConnectionToken = async (connId: string) => {
     if (!editingTokenValue) return alert("Enter the provider token");
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (authToken) headers.Authorization = `Bearer ${authToken}`;
-
-      const resp = await fetch(
-        `${apiBase}/api/provider/connections/${encodeURIComponent(connId)}/credentials`,
+      await apiJson(
+        `/provider/connections/${encodeURIComponent(connId)}/credentials`,
         {
           method: "POST",
-          headers,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             token: editingTokenValue,
             phoneNumberId: editingPhoneNumberId || undefined,
           }),
         },
+        auth.token,
       );
-      const j = await resp.json();
-      if (!resp.ok) throw new Error(j.error || "save failed");
       alert("Stored token for connection");
       setEditingConnId(null);
       setEditingTokenValue("");
@@ -715,8 +483,8 @@ function App() {
     let cancelled = false;
     const id = window.setInterval(async () => {
       try {
-        const resp = await fetch(
-          `${apiBase}/api/provider/link/status/${encodeURIComponent(linkCode)}`,
+        const resp = await apiFetch(
+          `/provider/link/status/${encodeURIComponent(linkCode)}`,
         );
         if (!resp.ok) return;
         const j = await resp.json();
@@ -775,18 +543,15 @@ function App() {
   const startLink = async (providerToLink: Provider) => {
     setLinkBusy(true);
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (authToken) headers.Authorization = `Bearer ${authToken}`;
-
-      const resp = await fetch(`${apiBase}/api/provider/link/init`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ provider: providerToLink }),
-      });
-      const j = await resp.json();
-      if (!resp.ok) throw new Error(j.error || "link init failed");
+      const j = await apiJson(
+        "/provider/link/init",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: providerToLink }),
+        },
+        auth.token,
+      );
       setLinkCode(j.data.code);
       setLinkProvider(j.data.provider);
       setLinkExpiresAt(j.data.expiresAt);
@@ -865,8 +630,8 @@ function App() {
           const ownerId =
             message.direction === "inbound" ? message.from : message.to;
           if (ownerId) {
-            const keyResp = await fetch(
-              `${apiBase}/api/keys/${encodeURIComponent(ownerId)}`,
+            const keyResp = await apiFetch(
+              `/keys/${encodeURIComponent(ownerId)}`,
             );
             if (keyResp.ok) {
               const kjson = await keyResp.json();
@@ -929,141 +694,46 @@ function App() {
 
     setBusy(true);
     try {
-      let finalImageUrl = imageUrl;
-
-      const outboundMode = replyMode === "secure";
       const conversationTarget =
         selectedConversation?.counterpart || selectedChatId || "unknown";
 
-      // If secure mode, fetch recipient public key and ensure local private key
-      let localPriv: any = null;
-      let recipientPubB64: string | null = null;
-      if (outboundMode) {
-        localPriv = privJwk;
-        if (!localPriv && localOwnerId) {
-          const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
-          if (stored) {
-            try {
-              localPriv = JSON.parse(stored);
-              setPrivJwk(localPriv);
-            } catch (e) {
-              // ignore parse errors
-            }
-          }
-        }
-        if (!localPriv) {
-          alert(
-            "No local private key found. Generate or load your key in Key Manager.",
-          );
-          throw new Error("missing local private key");
-        }
-
-        const keyResp = await fetch(
-          `${apiBase}/api/keys/${encodeURIComponent(conversationTarget)}`,
-        );
-        if (!keyResp.ok) {
-          alert("Recipient public key not found. Cannot send secure message.");
-          throw new Error("recipient key not found");
-        }
-        const keyJson = await keyResp.json();
-        recipientPubB64 = keyJson?.data?.publicKey;
-        if (!recipientPubB64) {
-          alert("Recipient public key missing from directory.");
-          throw new Error("recipient public missing");
-        }
-      }
-
-      // Handle attachments: encrypt before upload when in secure mode
-      if (file) {
-        if (outboundMode && recipientPubB64) {
-          // encrypt file for recipient and upload as raw encrypted blob
-          const { blob, filename } = await encryptFileForRecipient(
-            file,
-            localPriv,
-            recipientPubB64,
-          );
-          finalImageUrl = await uploadSelectedImage(blob, {
-            resourceType: "raw",
-            encrypted: true,
-            filename,
-          });
-        } else {
-          // plain upload (try multipart, fallback to base64 proxy)
+      // Ensure we surface a loaded private key in UI when possible
+      let localPriv = privJwk;
+      if (replyMode === "secure" && !localPriv && localOwnerId) {
+        const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
+        if (stored) {
           try {
-            finalImageUrl = await uploadSelectedImage(file);
-          } catch (err) {
-            try {
-              const dataUrl = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-              });
-
-              const proxyResp = await fetch(`${apiBase}/api/uploads/base64`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ dataUrl }),
-              });
-              const proxyJson = await proxyResp.json();
-              if (!proxyResp.ok)
-                throw new Error(proxyJson.error || "proxy upload failed");
-              finalImageUrl = proxyJson.url;
-            } catch (proxyErr) {
-              console.error("Upload failed", err, proxyErr);
-              throw new Error("File upload failed");
-            }
+            localPriv = JSON.parse(stored);
+            setPrivJwk(localPriv);
+          } catch (e) {
+            // ignore parse errors
           }
         }
       }
 
-      const payload: any = {
+      await sendMessageService({
         provider,
-        from: `${provider}-web`,
-        to: conversationTarget,
-        chatId: selectedChatId,
-        attachments: finalImageUrl
-          ? [{ type: "image", url: finalImageUrl }]
-          : [],
-      };
-
-      if (outboundMode && recipientPubB64 && localPriv) {
-        const encrypted = await encryptForRecipient(
-          text || "",
-          localPriv,
-          recipientPubB64,
-        );
-        payload.encryptedText = encrypted;
-        payload.encrypt = true;
-      } else {
-        payload.text = text;
-        payload.encrypt = false;
-      }
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (authToken) headers.Authorization = `Bearer ${authToken}`;
-
-      const response = await fetch(`${apiBase}/api/messages/send`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
+        selectedChatId,
+        conversationTarget,
+        replyMode,
+        text,
+        file,
+        imageUrl,
+        authToken: auth.token,
+        privJwk: localPriv,
+        localOwnerId: localOwnerId || null,
       });
-
-      if (!response.ok) {
-        throw new Error("Send failed");
-      }
 
       setText("");
       setImageUrl("");
       setFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
       await loadConversations(provider);
       await loadMessages(provider, selectedChatId);
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to send message");
     } finally {
       setBusy(false);
     }
@@ -1103,15 +773,13 @@ function App() {
 
         <div className="panel account-panel">
           <h3>Account</h3>
-          {me ? (
+          {auth.user ? (
             <div>
-              <div>Signed in as {me.email}</div>
-              <div>{me.displayName}</div>
+              <div>Signed in as {auth.user?.email}</div>
+              <div>{auth.user?.displayName}</div>
               <button
                 onClick={() => {
-                  localStorage.removeItem("crypt:token");
-                  setAuthToken(null);
-                  setMe(null);
+                  void auth.logout();
                 }}
               >
                 Sign out
@@ -1147,16 +815,7 @@ function App() {
                   onClick={async () => {
                     setAuthBusy(true);
                     try {
-                      const resp = await fetch(`${apiBase}/api/auth/signup`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email, password, displayName }),
-                      });
-                      const j = await resp.json();
-                      if (!resp.ok) throw new Error(j.error || "signup failed");
-                      const token = j.data.token;
-                      localStorage.setItem("crypt:token", token);
-                      setAuthToken(token);
+                      await auth.register({ email, password, displayName });
                     } catch (err) {
                       console.error(err);
                       alert("Signup failed");
@@ -1173,16 +832,7 @@ function App() {
                   onClick={async () => {
                     setAuthBusy(true);
                     try {
-                      const resp = await fetch(`${apiBase}/api/auth/login`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email, password }),
-                      });
-                      const j = await resp.json();
-                      if (!resp.ok) throw new Error(j.error || "login failed");
-                      const token = j.data.token;
-                      localStorage.setItem("crypt:token", token);
-                      setAuthToken(token);
+                      await auth.login({ email, password });
                     } catch (err) {
                       console.error(err);
                       alert("Login failed");
@@ -1198,358 +848,56 @@ function App() {
           )}
         </div>
 
-        <div className="panel onboarding-panel">
-          <h3>Onboarding Checklist</h3>
-          <ol>
-            <li>
-              <strong>Signed in:</strong>{" "}
-              {me?.email ? (
-                <span style={{ color: "#6fdc97" }}>{me.email}</span>
-              ) : (
-                <span style={{ color: "#f3c969" }}>Not signed in</span>
-              )}
-            </li>
-            <li>
-              <strong>Key generated:</strong>{" "}
-              {pubKeyB64 ? (
-                <span style={{ color: "#6fdc97" }}>Yes</span>
-              ) : (
-                <span style={{ color: "#f3c969" }}>No</span>
-              )}
-            </li>
-            <li>
-              <strong>Key registered:</strong>{" "}
-              {keyRegistered ? (
-                <span style={{ color: "#6fdc97" }}>Yes</span>
-              ) : (
-                <span style={{ color: "#f3c969" }}>No</span>
-              )}
-            </li>
-            <li>
-              <strong>Provider linked:</strong>{" "}
-              {connections.length > 0 ? (
-                <span style={{ color: "#6fdc97" }}>
-                  {connections.length} connection(s)
-                </span>
-              ) : (
-                <span style={{ color: "#f3c969" }}>None</span>
-              )}
-            </li>
-          </ol>
+        <OnboardingPanel
+          authUserEmail={auth.user?.email}
+          pubKeyB64={pubKeyB64}
+          keyRegistered={keyRegistered}
+          connectionsCount={connections.length}
+          generateKeypair={generateKeypair}
+          registerPublicKey={registerPublicKey}
+          startLink={startLink}
+          keyBusy={keyBusy}
+          linkBusy={linkBusy}
+        />
 
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button
-              onClick={() => void generateKeypair()}
-              disabled={keyBusy}
-              aria-label="Generate keypair"
-            >
-              Generate Keypair
-            </button>
-            <button
-              onClick={() => void registerPublicKey()}
-              disabled={!pubKeyB64}
-              aria-label="Register public key"
-            >
-              Register Key
-            </button>
-            <button
-              onClick={() => void startLink("whatsapp")}
-              aria-label="Start WhatsApp link"
-            >
-              Link WhatsApp
-            </button>
-            <button
-              onClick={() => void startLink("telegram")}
-              aria-label="Start Telegram link"
-            >
-              Link Telegram
-            </button>
-          </div>
-        </div>
+        <KeyManager
+          localOwnerId={localOwnerId}
+          setLocalOwnerId={setLocalOwnerId}
+          pubKeyB64={pubKeyB64}
+          privJwk={privJwk}
+          fingerprint={fingerprint}
+          qrDataUrl={qrDataUrl}
+          keyBusy={keyBusy}
+          generateKeypair={generateKeypair}
+          registerPublicKey={registerPublicKey}
+          setPrivJwk={setPrivJwk}
+          authUserEmail={auth.user?.email}
+        />
 
-        <div className="panel key-manager">
-          <h3>Key Manager (E2E scaffold)</h3>
-          <label>
-            Your local ID
-            <input
-              type="text"
-              value={localOwnerId}
-              onChange={(e) => setLocalOwnerId(e.target.value)}
-              placeholder={
-                me?.email
-                  ? "Using account email"
-                  : "alice@example.com or alice_telegram"
-              }
-              disabled={!!me?.email}
-            />
-            {me?.email && (
-              <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                Using account email as owner ID: {me.email}
-              </div>
-            )}
-          </label>
-          <div className="key-actions">
-            <button
-              type="button"
-              onClick={() => void generateKeypair()}
-              disabled={keyBusy}
-            >
-              Generate Keypair
-            </button>
-            <button type="button" onClick={() => void registerPublicKey()}>
-              Register Public Key
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const v = localStorage.getItem(`crypt:priv:${localOwnerId}`);
-                if (!v)
-                  return alert("No private key in local storage for this ID");
-                try {
-                  const jwk = JSON.parse(v);
-                  setPrivJwk(jwk);
-                  alert("Loaded private key from local storage");
-                } catch (err) {
-                  alert("Failed to load private key");
-                }
-              }}
-            >
-              Load Private Key
-            </button>
-          </div>
+        <LinkWizard
+          startLink={startLink}
+          linkCode={linkCode}
+          linkProvider={linkProvider}
+          linkExpiresAt={linkExpiresAt}
+          linkStatus={linkStatus}
+          linkDeepMobile={linkDeepMobile}
+          linkDeepWeb={linkDeepWeb}
+          linkBusy={linkBusy}
+          cancelLink={cancelLink}
+        />
 
-          {pubKeyB64 && (
-            <div className="key-preview">
-              <label>Public key (base64)</label>
-              <textarea readOnly rows={3} value={pubKeyB64} />
-              {fingerprint && (
-                <div className="fingerprint">Fingerprint: {fingerprint}</div>
-              )}
-              {qrDataUrl && (
-                <img src={qrDataUrl} alt="QR" style={{ width: 140 }} />
-              )}
-              {privJwk && (
-                <div className="private-status">Private key stored locally</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="panel link-wizard">
-          <h3>Link Provider (no credentials)</h3>
-          <p>
-            Generate a short link code and send it to the hosted bot/number in
-            your provider client (Telegram or WhatsApp) to link this browser
-            session to the hosted connector.
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => void startLink("telegram")}
-              disabled={linkBusy}
-            >
-              Link Telegram
-            </button>
-            <button
-              onClick={() => void startLink("whatsapp")}
-              disabled={linkBusy}
-            >
-              Link WhatsApp
-            </button>
-          </div>
-
-          {linkCode && (
-            <div className="link-status">
-              <label>Link code</label>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <strong style={{ fontSize: 18 }}>{`LINK ${linkCode}`}</strong>
-                <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`LINK ${linkCode}`);
-                    alert("Copied link code to clipboard");
-                  }}
-                >
-                  Copy
-                </button>
-                <button onClick={cancelLink}>Close</button>
-              </div>
-
-              <div style={{ marginTop: 8 }}>
-                <small>
-                  Expires:{" "}
-                  {linkExpiresAt
-                    ? new Date(linkExpiresAt).toLocaleString()
-                    : "-"}
-                </small>
-              </div>
-
-              <div style={{ marginTop: 8 }}>
-                {linkStatus?.completed ? (
-                  <div>
-                    <strong>Linked</strong>
-                    <div>Chat ID: {linkStatus.providerChatId}</div>
-                    <div>Provider: {linkProvider ?? "(unknown)"}</div>
-                    <div>
-                      Display: {linkStatus.providerDisplayName ?? "(unknown)"}
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    Waiting for the user to send the code in the provider
-                    client...
-                    <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => {
-                          const preferMobile = isMobileDevice();
-                          const toOpen = preferMobile
-                            ? (linkDeepMobile ?? linkDeepWeb)
-                            : (linkDeepWeb ?? linkDeepMobile);
-                          if (toOpen) window.open(toOpen, "_blank");
-                          else
-                            alert("No deep link available for this provider");
-                        }}
-                      >
-                        Open in app/web
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (linkDeepWeb) window.open(linkDeepWeb, "_blank");
-                          else alert("No web deep link available");
-                        }}
-                      >
-                        Open web
-                      </button>
-                      <small style={{ alignSelf: "center", color: "#888" }}>
-                        Tip: Mobile devices will open the provider app when
-                        available.
-                      </small>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="panel connections-panel">
-          <h3>Connections</h3>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              marginBottom: 8,
-            }}
-          >
-            <button
-              onClick={() => void loadConnectionsList()}
-              disabled={connectionsBusy}
-            >
-              Refresh
-            </button>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <small style={{ color: "#666" }}>
-                Connections listed for your account.
-              </small>
-            </div>
-          </div>
-
-          {connections.length === 0 ? (
-            <div className="empty-state">
-              No provider connections for this account.
-            </div>
-          ) : (
-            connections.map((conn) => (
-              <div
-                key={conn._id}
-                style={{
-                  borderTop: "1px solid #eee",
-                  paddingTop: 8,
-                  marginTop: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <div>
-                    <strong>{conn.provider}</strong>
-                    <div style={{ fontSize: 12 }}>{conn.providerChatId}</div>
-                    <div style={{ fontSize: 12 }}>{conn.displayName}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {editingConnId === conn._id ? (
-                      <button
-                        onClick={() => {
-                          setEditingConnId(null);
-                          setEditingTokenValue("");
-                          setEditingPhoneNumberId("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setEditingConnId(conn._id);
-                          setEditingTokenValue("");
-                          setEditingPhoneNumberId(
-                            conn.meta?.phoneNumberId ?? "",
-                          );
-                        }}
-                      >
-                        Set Token
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {editingConnId === conn._id && (
-                  <div style={{ marginTop: 8 }}>
-                    <label>
-                      Provider token
-                      <input
-                        value={editingTokenValue}
-                        onChange={(e) => setEditingTokenValue(e.target.value)}
-                        style={{ width: "100%" }}
-                      />
-                    </label>
-                    {conn.provider === "whatsapp" && (
-                      <label>
-                        Phone number id (optional)
-                        <input
-                          value={editingPhoneNumberId}
-                          onChange={(e) =>
-                            setEditingPhoneNumberId(e.target.value)
-                          }
-                          style={{ width: "100%" }}
-                        />
-                      </label>
-                    )}
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button
-                        onClick={() => void submitConnectionToken(conn._id)}
-                      >
-                        Save token
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingConnId(null);
-                          setEditingTokenValue("");
-                          setEditingPhoneNumberId("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+        <ConnectionsPanel
+          connections={connections}
+          connectionsBusy={connectionsBusy}
+          loadConnectionsList={loadConnectionsList}
+          editingConnId={editingConnId}
+          setEditingConnId={setEditingConnId}
+          editingTokenValue={editingTokenValue}
+          setEditingTokenValue={setEditingTokenValue}
+          editingPhoneNumberId={editingPhoneNumberId}
+          setEditingPhoneNumberId={setEditingPhoneNumberId}
+          submitConnectionToken={submitConnectionToken}
+        />
 
         <nav className="provider-nav" aria-label="Provider navigation">
           {supportedProviders.map((item) => {
@@ -1727,8 +1075,8 @@ function App() {
                       setVerifyFingerprint(null);
                       setVerifyQr(null);
                       try {
-                        const resp = await fetch(
-                          `${apiBase}/api/provider/resolve?provider=${encodeURIComponent(selectedConversation.provider)}&chatId=${encodeURIComponent(selectedConversation.chatId)}`,
+                        const resp = await apiFetch(
+                          `/provider/resolve?provider=${encodeURIComponent(selectedConversation.provider)}&chatId=${encodeURIComponent(selectedConversation.chatId)}`,
                         );
                         if (!resp.ok) throw new Error("resolve failed");
                         const j = await resp.json();
@@ -1737,8 +1085,8 @@ function App() {
                           ownerEmail ?? selectedConversation.chatId,
                         );
                         if (ownerEmail) {
-                          const kresp = await fetch(
-                            `${apiBase}/api/keys/${encodeURIComponent(ownerEmail)}`,
+                          const kresp = await apiFetch(
+                            `/keys/${encodeURIComponent(ownerEmail)}`,
                           );
                           if (kresp.ok) {
                             const kj = await kresp.json();
@@ -1867,88 +1215,22 @@ function App() {
                 </div>
               </div>
 
-              <label>
-                Message text
-                <textarea
-                  rows={3}
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  placeholder={
-                    selectedConversation
-                      ? "Type a reply for the selected thread"
-                      : "Pick a chat first"
-                  }
-                  disabled={!selectedConversation}
-                />
-              </label>
-
-              <label>
-                Image URL (optional)
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(event) => setImageUrl(event.target.value)}
-                  placeholder="https://..."
-                  disabled={!selectedConversation}
-                />
-              </label>
-
-              <label>
-                Upload Image
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                  disabled={!selectedConversation}
-                />
-              </label>
-
-              {file && (
-                <div className="file-preview-container">
-                  {filePreview && (
-                    <img
-                      src={filePreview}
-                      alt="upload preview"
-                      className="file-thumbnail"
-                    />
-                  )}
-                  <div className="file-preview-details">
-                    <span>
-                      <strong>Selected:</strong> {file.name} (
-                      {Math.round(file.size / 1024)} KB)
-                    </span>
-                    <button
-                      type="button"
-                      className="remove-file-button"
-                      onClick={removeFile}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="composer-actions">
-                <span className="composer-hint">
-                  {replyMode === "secure"
-                    ? "Secure mode encrypts the message before transport."
-                    : "Plain mode sends the message without encrypting it."}
-                </span>
-                <button
-                  onClick={sendMessage}
-                  disabled={
-                    busy ||
-                    !selectedConversation ||
-                    (!text && !imageUrl && !file) ||
-                    !selectedProviderStatus?.backendReady
-                  }
-                >
-                  {replyMode === "secure"
-                    ? "Send secure message"
-                    : "Send plain message"}
-                </button>
-              </div>
+              <Composer
+                text={text}
+                setText={setText}
+                imageUrl={imageUrl}
+                setImageUrl={setImageUrl}
+                file={file}
+                setFile={setFile}
+                filePreview={filePreview}
+                fileInputRef={fileInputRef}
+                removeFile={removeFile}
+                replyMode={replyMode}
+                busy={busy}
+                sendMessage={sendMessage}
+                selectedConversation={selectedConversation}
+                selectedProviderStatus={selectedProviderStatus}
+              />
             </section>
 
             <section className="panel timeline elevated">
@@ -1968,190 +1250,12 @@ function App() {
                 </span>
               </div>
 
-              {messages.length === 0 ? (
-                <div className="empty-state timeline-empty">
-                  <p>No messages yet for this thread.</p>
-                  <p>
-                    Use the provider web client to start the chat, then reply
-                    here.
-                  </p>
-                </div>
-              ) : (
-                messages.map((message) => {
-                  const content = message.bodyOmitted
-                    ? "(omitted for privacy)"
-                    : (message.decryptedText ??
-                      message.encryptedText ??
-                      "(empty)");
-                  const secure = isSecureCiphertext(
-                    message.encryptedText || "",
-                  );
-                  return (
-                    <article
-                      key={message._id ?? message.id}
-                      className={`message-card ${message.direction}`}
-                    >
-                      <div className={`message-row ${message.direction}`}>
-                        {message.direction === "inbound" && (
-                          <div className="avatar">
-                            {(message.from || "?").charAt(0).toUpperCase()}
-                          </div>
-                        )}
-
-                        <div className={`bubble ${message.direction}`}>
-                          <div className="bubble-meta">
-                            <div className="who">
-                              {message.direction === "inbound"
-                                ? message.from
-                                : "You"}
-                            </div>
-                            <div className="time">
-                              {toHumanTime(message.createdAt)}
-                            </div>
-                          </div>
-
-                          <div className="bubble-content">{content}</div>
-
-                          {message.attachments.length > 0 && (
-                            <div className="attachment-grid">
-                              {message.attachments.map((item) => {
-                                const isEnc = item.url.includes("?crypt=1");
-                                return isEnc ? (
-                                  <div
-                                    key={item.url}
-                                    className="encrypted-attachment"
-                                  >
-                                    <button
-                                      onClick={async () => {
-                                        try {
-                                          const ownerId =
-                                            message.direction === "inbound"
-                                              ? message.from
-                                              : message.to;
-                                          const storedPriv =
-                                            privJwk ??
-                                            (localOwnerId
-                                              ? JSON.parse(
-                                                  localStorage.getItem(
-                                                    `crypt:priv:${localOwnerId}`,
-                                                  ) || "null",
-                                                )
-                                              : null);
-                                          if (!storedPriv)
-                                            return alert(
-                                              "No private key available to decrypt attachment",
-                                            );
-
-                                          const keyResp = await fetch(
-                                            `${apiBase}/api/keys/${encodeURIComponent(ownerId)}`,
-                                          );
-                                          if (!keyResp.ok)
-                                            return alert(
-                                              "Could not fetch counterpart public key",
-                                            );
-                                          const kjson = await keyResp.json();
-                                          const theirPub =
-                                            kjson?.data?.publicKey;
-                                          if (!theirPub)
-                                            return alert(
-                                              "Counterpart public key missing",
-                                            );
-
-                                          const res = await fetch(item.url);
-                                          if (!res.ok)
-                                            return alert(
-                                              "Failed to download attachment",
-                                            );
-                                          const ab = await res.arrayBuffer();
-
-                                          // decrypt binary attachment
-                                          const arr = new Uint8Array(ab);
-                                          const iv = arr.slice(0, 12);
-                                          const cipher = arr.slice(12);
-                                          const aesKey = await deriveAesGcmKey(
-                                            storedPriv,
-                                            theirPub,
-                                          );
-                                          const plain =
-                                            await crypto.subtle.decrypt(
-                                              { name: "AES-GCM", iv },
-                                              aesKey,
-                                              cipher.buffer
-                                                ? cipher.buffer
-                                                : cipher,
-                                            );
-                                          const plainArr = new Uint8Array(
-                                            plain,
-                                          );
-                                          const view = new DataView(
-                                            plainArr.buffer,
-                                          );
-                                          const headerLen = view.getUint32(0);
-                                          const headerBytes = new Uint8Array(
-                                            plainArr.buffer.slice(
-                                              4,
-                                              4 + headerLen,
-                                            ),
-                                          );
-                                          const headerStr =
-                                            new TextDecoder().decode(
-                                              headerBytes,
-                                            );
-                                          const meta = JSON.parse(headerStr);
-                                          const fileBytes = new Uint8Array(
-                                            plainArr.buffer.slice(
-                                              4 + headerLen,
-                                            ),
-                                          );
-                                          const blob = new Blob([fileBytes], {
-                                            type:
-                                              meta.contentType ||
-                                              "application/octet-stream",
-                                          });
-                                          const urlObj =
-                                            URL.createObjectURL(blob);
-                                          // open in new tab
-                                          window.open(urlObj, "_blank");
-                                        } catch (err) {
-                                          console.error(err);
-                                          alert(
-                                            "Failed to decrypt/open attachment",
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      Open encrypted attachment
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <img
-                                    key={item.url}
-                                    src={item.url}
-                                    alt="attachment"
-                                  />
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        {message.direction === "outbound" && (
-                          <div className="avatar you">Y</div>
-                        )}
-                      </div>
-
-                      <div className="message-foot">
-                        <span>
-                          Delivery: {message.deliveryStatus ?? "unknown"}
-                        </span>
-                        <span style={{ marginLeft: 12 }}>
-                          Security: {secure ? "secure" : "plain"}
-                        </span>
-                      </div>
-                    </article>
-                  );
-                })
-              )}
+              <Timeline
+                messages={messages}
+                privJwk={privJwk}
+                localOwnerId={localOwnerId}
+                deriveAesGcmKey={deriveAesGcmKey}
+              />
             </section>
           </section>
         </section>

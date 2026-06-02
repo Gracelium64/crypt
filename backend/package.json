@@ -15,6 +15,28 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "imports": {
+    "#db": {
+      "development": "./src/db/index.ts",
+      "default": "./dist/db/index.js"
+    },
+    "#models": {
+      "development": "./src/models/index.ts",
+      "default": "./dist/models/index.js"
+    },
+    "#services": {
+      "development": "./src/services/index.ts",
+      "default": "./dist/services/index.js"
+    },
+    "#routes": {
+      "development": "./src/routes/index.ts",
+      "default": "./dist/routes/index.js"
+    },
+    "#config": {
+      "development": "./src/config/index.ts",
+      "default": "./dist/config/index.js"
+    }
+  },
   "dependencies": {
     "cors": "2.8.6",
     "dotenv": "17.4.2",

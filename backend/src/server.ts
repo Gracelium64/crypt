@@ -1,17 +1,20 @@
 import http from "node:http";
 import cors from "cors";
 import express from "express";
-import { env } from "./config/env.js";
-import { connectToDatabase } from "./db/connect.js";
-import { messagesRouter } from "./routes/messages.route.js";
-import { providersRouter } from "./routes/providers.route.js";
-import adminRouter from "./routes/admin.route.js";
-import uploadsRouter from "./routes/uploads.route.js";
-import keysRouter from "./routes/keys.route.js";
-import linkRouter from "./routes/link.route.js";
-import authRouter from "./routes/auth.route.js";
-import providerConnectionsRouter from "./routes/providerConnections.route.js";
-import { initRealtime } from "./services/realtime.service.js";
+import "#db";
+import { env } from "#config/env.js";
+import {
+  messagesRouter,
+  providersRouter,
+  authRouter,
+  adminRouter,
+  uploadsRouter,
+  keysRouter,
+  linkRouter,
+  providerConnectionsRouter,
+  swaggerRouter,
+} from "#routes";
+import { initRealtime } from "#services/realtime.service.js";
 
 const app = express();
 
@@ -35,8 +38,11 @@ app.use("/api", uploadsRouter);
 app.use("/api", keysRouter);
 app.use("/api", linkRouter);
 app.use("/api", providerConnectionsRouter);
+app.use("/api", swaggerRouter);
 
 const bootstrap = async () => {
+  // db index ensures connectToDatabase is exported; call it explicitly
+  const { connectToDatabase } = await import("#db");
   await connectToDatabase();
 
   const server = http.createServer(app);

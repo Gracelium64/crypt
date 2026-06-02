@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend deps
+        run: npm ci --prefix backend
+
+      - name: Build backend
+        run: npm --prefix backend run build
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontendReactJs
+
+      - name: Build frontend
+        run: npm --prefix frontendReactJs run build
+
+      - name: Run frontend tests
+        run: npm --prefix frontendReactJs run test --if-present
