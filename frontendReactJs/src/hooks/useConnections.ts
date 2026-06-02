@@ -14,7 +14,7 @@ export default function useConnections(authToken?: string | null) {
     try {
       const j = await apiJson("/provider/connections", {}, authToken);
       setConnections(j.data ?? []);
-    } catch (err) {
+    } catch {
       setConnections([]);
     } finally {
       setConnectionsBusy(false);

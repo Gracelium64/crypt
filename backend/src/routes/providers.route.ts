@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Message } from "../models/message.model.js";
-import { Link } from "../models/link.model.js";
-import { ProviderConnection } from "../models/providerConnection.model.js";
+import { Message, Link, ProviderConnection } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
 import { env } from "../config/env.js";

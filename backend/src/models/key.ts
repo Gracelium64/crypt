@@ -12,4 +12,5 @@ export type KeyDocument = mongoose.InferSchemaType<typeof keySchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const Key = mongoose.model("Key", keySchema);
+const Key = mongoose.model("Key", keySchema);
+export default Key;

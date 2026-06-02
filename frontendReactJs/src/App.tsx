@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import QRCode from "qrcode";
 import "./App.css";
 import { useAuth } from "./context/useAuth";
 import KeyManager from "./components/KeyManager";
@@ -47,7 +46,7 @@ const toHumanTime = (iso?: string | null) => {
   if (!iso) return "never";
   try {
     return new Date(iso).toLocaleString();
-  } catch (e) {
+  } catch {
     return iso;
   }
 };
@@ -74,7 +73,6 @@ function App() {
 
   const [lastSync, setLastSync] = useState<string>("");
   const [localOwnerId, setLocalOwnerId] = useState("");
-  const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
   const [privJwk, setPrivJwk] = useState<any | null>(null);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
@@ -94,6 +92,42 @@ function App() {
   );
   const connectionsHook = useConnections(auth.token);
   const { providerStatuses, loadProviderStatuses } = useProviders();
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = (msg: string, ms = 4000) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(null), ms);
+  };
+  const handleLinkComplete = useCallback(
+    async (data: any) => {
+      try {
+        await connectionsHook.loadConnectionsList();
+        if (data.provider) {
+          setProvider(data.provider as Provider);
+          if (data.providerChatId) {
+            setSelectedChatId(data.providerChatId);
+            await convHook.loadConversations(data.provider);
+            await convHook.loadMessages(
+              data.provider,
+              data.providerChatId,
+              undefined,
+              privJwk,
+              localOwnerId,
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+      showToast(
+        `Linked ${data.provider} — you can now send secure messages to this chat.`,
+      );
+    },
+    [connectionsHook, convHook, localOwnerId, privJwk],
+  );
+
   const {
     linkCode: hookLinkCode,
     linkProvider: hookLinkProvider,
@@ -104,44 +138,12 @@ function App() {
     linkBusy: hookLinkBusy,
     startLink: startLinkFn,
     cancelLink: cancelLinkFn,
-  } = useLink(auth.token, async (data) => {
-    try {
-      await connectionsHook.loadConnectionsList();
-      if (data.provider) {
-        setProvider(data.provider as Provider);
-        if (data.providerChatId) {
-          setSelectedChatId(data.providerChatId);
-          await convHook.loadConversations(data.provider);
-          await convHook.loadMessages(
-            data.provider,
-            data.providerChatId,
-            undefined,
-            privJwk,
-            localOwnerId,
-          );
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-    showToast(
-      `Linked ${data.provider} — you can now send secure messages to this chat.`,
-    );
-  });
-  const [verifyOpen, setVerifyOpen] = useState(false);
+  } = useLink(auth.token, handleLinkComplete);
   // verification UI moved into SelectedConversationPanel
 
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [editingTokenValue, setEditingTokenValue] = useState("");
   const [editingPhoneNumberId, setEditingPhoneNumberId] = useState("");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
-
-  const showToast = (msg: string, ms = 4000) => {
-    setToastMessage(msg);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToastMessage(null), ms);
-  };
 
   // onboarding checks
   const [keyRegistered, setKeyRegistered] = useState<boolean>(false);
@@ -153,7 +155,7 @@ function App() {
       const j = await resp.json();
       const remote = j?.data?.publicKey ?? null;
       setKeyRegistered(remote === pubKeyB64);
-    } catch (err) {
+    } catch {
       setKeyRegistered(false);
     }
   };
@@ -168,8 +170,8 @@ function App() {
       setFingerprint(r.fingerprint);
       setQrDataUrl(r.qrDataUrl);
       showToast("Keypair generated locally");
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      console.error(_err);
       alert("Key generation failed");
     } finally {
       setKeyBusy(false);
@@ -185,8 +187,8 @@ function App() {
       showToast("Public key registered");
       await connectionsHook.loadConnectionsList();
       await checkKeyRegistered();
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      console.error(_err);
       showToast("Failed to register key");
     }
   };
@@ -232,36 +234,42 @@ function App() {
 
   // provider statuses handled by useProviders hook
 
-  const loadConversations = async (currentProvider: Provider) => {
-    await convHook.loadConversations(currentProvider);
-    setConversations(convHook.conversations);
-    setSelectedChatId((currentChatId) => {
-      if (
-        currentChatId &&
-        convHook.conversations.some((item) => item.chatId === currentChatId)
-      ) {
-        return currentChatId;
-      }
+  const loadConversations = useCallback(
+    async (currentProvider: Provider) => {
+      await convHook.loadConversations(currentProvider);
+      setConversations(convHook.conversations);
+      setSelectedChatId((currentChatId) => {
+        if (
+          currentChatId &&
+          convHook.conversations.some((item) => item.chatId === currentChatId)
+        ) {
+          return currentChatId;
+        }
 
-      return convHook.conversations[0]?.chatId ?? "";
-    });
-  };
+        return convHook.conversations[0]?.chatId ?? "";
+      });
+    },
+    [convHook],
+  );
 
-  const loadMessages = async (
-    currentProvider: Provider,
-    currentChatId: string,
-    since?: string,
-  ) => {
-    await convHook.loadMessages(
-      currentProvider,
-      currentChatId,
-      since,
-      privJwk,
-      localOwnerId,
-    );
-    setMessages(convHook.messages);
-    setLastSync(convHook.lastSync);
-  };
+  const loadMessages = useCallback(
+    async (
+      currentProvider: Provider,
+      currentChatId: string,
+      since?: string,
+    ) => {
+      await convHook.loadMessages(
+        currentProvider,
+        currentChatId,
+        since,
+        privJwk,
+        localOwnerId,
+      );
+      setMessages(convHook.messages);
+      setLastSync(convHook.lastSync);
+    },
+    [convHook, privJwk, localOwnerId],
+  );
 
   useEffect(() => {
     void loadProviderStatuses();
@@ -297,8 +305,8 @@ function App() {
       setEditingConnId(null);
       setEditingTokenValue("");
       setEditingPhoneNumberId("");
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      console.error(_err);
       alert("Failed to store token for connection");
     }
   };
@@ -310,13 +318,11 @@ function App() {
     setMessages([]);
     setLastSync("");
     setReplyMode("secure");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [provider, loadConversations]);
 
   useEffect(() => {
     void loadMessages(provider, selectedChatId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, selectedChatId]);
+  }, [provider, selectedChatId, loadMessages]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
@@ -334,7 +340,7 @@ function App() {
         setLastSync(message.createdAt);
       }
     },
-    [convHook, privJwk, localOwnerId],
+    [convHook, privJwk, localOwnerId, loadConversations],
   );
 
   const { isRealtime } = useRealtime(onNewMessage, [onNewMessage]);
@@ -350,7 +356,7 @@ function App() {
     }, 10000);
 
     return () => window.clearInterval(timer);
-  }, [isRealtime, lastSync, provider, selectedChatId]);
+  }, [isRealtime, lastSync, provider, selectedChatId, loadConversations, loadMessages]);
 
   const handleSend = async () => {
     if (!selectedChatId) {
@@ -369,7 +375,6 @@ function App() {
       const conversationTarget =
         selectedConversation?.counterpart || selectedChatId || "unknown";
 
-      // Ensure we surface a loaded private key in UI when possible
       let localPriv = privJwk;
       if (replyMode === "secure" && !localPriv && localOwnerId) {
         const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
@@ -377,7 +382,7 @@ function App() {
           try {
             localPriv = JSON.parse(stored);
             setPrivJwk(localPriv);
-          } catch (e) {
+          } catch {
             // ignore parse errors
           }
         }
@@ -402,12 +407,11 @@ function App() {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
-      // Sync App state with convHook results
       setConversations(convHook.conversations);
       setMessages(convHook.messages);
       setLastSync(convHook.lastSync);
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      console.error(_err);
       showToast("Failed to send message");
     }
   };
@@ -489,8 +493,8 @@ function App() {
                     setAuthBusy(true);
                     try {
                       await auth.register({ email, password, displayName });
-                    } catch (err) {
-                      console.error(err);
+                    } catch (_err) {
+                      console.error(_err);
                       alert("Signup failed");
                     } finally {
                       setAuthBusy(false);
@@ -506,8 +510,8 @@ function App() {
                     setAuthBusy(true);
                     try {
                       await auth.login({ email, password });
-                    } catch (err) {
-                      console.error(err);
+                    } catch (_err) {
+                      console.error(_err);
                       alert("Login failed");
                     } finally {
                       setAuthBusy(false);

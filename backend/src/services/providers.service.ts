@@ -1,5 +1,5 @@
 import { env } from "../config/env.js";
-import type { ProviderName } from "../models/message.model.js";
+import type { ProviderName } from "#models";
 
 type SendPayload = {
   provider: ProviderName;

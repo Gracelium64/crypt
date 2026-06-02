@@ -44,13 +44,13 @@ export default function useSend(authToken: string | null, convHook: any) {
             opts.localOwnerId,
           );
         }
-      } catch (e) {
+      } catch {
         // non-fatal refresh errors
       }
 
       return true;
-    } catch (err) {
-      console.error("sendMessage failed", err);
+    } catch (_err) {
+      console.error("sendMessage failed", _err);
       return false;
     } finally {
       setBusy(false);

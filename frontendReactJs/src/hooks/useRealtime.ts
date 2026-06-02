@@ -26,7 +26,7 @@ export default function useRealtime(
       if (onNewMessage) socket.off("message:new", onNewMessage);
       try {
         socket.close();
-      } catch (e) {
+      } catch {
         /* ignore */
       }
     };

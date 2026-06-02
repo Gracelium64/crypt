@@ -18,7 +18,7 @@ export const generateKeypair = async (localOwnerId: string) => {
   // persist private key locally
   try {
     localStorage.setItem(`crypt:priv:${localOwnerId}`, JSON.stringify(privJwk));
-  } catch (e) {
+  } catch {
     // ignore localStorage failures
   }
 

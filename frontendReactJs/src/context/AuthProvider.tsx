@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const profile = await meRequest(t);
         setUser(profile);
         setToken(t);
-      } catch (err) {
+      } catch {
         localStorage.removeItem("crypt:token");
         setUser(null);
         setToken(null);
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
     run();
-  }, [checkSession]);
+  }, [checkSession, token]);
 
   const login = async (payload: { email: string; password: string }) => {
     const { token: t } = await loginRequest(payload);

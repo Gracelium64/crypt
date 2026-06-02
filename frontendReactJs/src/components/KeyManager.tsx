@@ -74,7 +74,7 @@ export default function KeyManager(props: Props) {
               const jwk = JSON.parse(v);
               setPrivJwk(jwk);
               alert("Loaded private key from local storage");
-            } catch (err) {
+            } catch {
               alert("Failed to load private key");
             }
           }}

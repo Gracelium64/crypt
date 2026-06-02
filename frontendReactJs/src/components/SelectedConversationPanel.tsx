@@ -51,8 +51,8 @@ export default function SelectedConversationPanel({
           }
         }
       }
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      console.error(_err);
       alert("Failed to load verification info");
     }
   };

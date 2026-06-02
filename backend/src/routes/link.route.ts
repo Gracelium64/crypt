@@ -1,12 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import crypto from "crypto";
-import { Link } from "../models/link.model.js";
+import { Link, ProviderConnection, Key, Account } from "#models";
 import { env } from "../config/env.js";
 import { requireAuth } from "./auth.route.js";
-import { ProviderConnection } from "../models/providerConnection.model.js";
-import { Key } from "../models/key.model.js";
-import { Account } from "../models/account.model.js";
 
 const linkRouter = Router();
 

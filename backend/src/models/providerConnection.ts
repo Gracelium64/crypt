@@ -25,7 +25,8 @@ export type ProviderConnectionDocument = mongoose.InferSchemaType<
   _id: mongoose.Types.ObjectId;
 };
 
-export const ProviderConnection = mongoose.model(
+const ProviderConnection = mongoose.model(
   "ProviderConnection",
   providerConnectionSchema,
 );
+export default ProviderConnection;

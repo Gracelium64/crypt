@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { ProviderConnection } from "../models/providerConnection.model.js";
+import { ProviderConnection } from "#models";
 import { requireAuth } from "./auth.route.js";
 import { env } from "../config/env.js";
 import { encryptSecret } from "../services/secret.service.js";
@@ -54,7 +54,7 @@ router.get("/provider/resolve", async (req, res) => {
   // Attempt to populate account email
   try {
     // Lazy require to avoid circular dep issues
-    const { Account } = await import("../models/account.model.js");
+    const { Account } = await import("#models");
     const account = await Account.findById(conn.accountId).lean();
     res.status(200).json({
       ok: true,

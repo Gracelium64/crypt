@@ -1,24 +1,7 @@
 import type { FC } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext } from "../lib/crypto";
-
-type Attachment = { type: "image"; url: string };
-
-type ChatMessage = {
-  _id?: string;
-  id?: string;
-  provider: string;
-  direction: "inbound" | "outbound";
-  from: string;
-  to: string;
-  chatId: string;
-  encryptedText: string;
-  attachments: Attachment[];
-  deliveryStatus?: "queued" | "sent" | "failed";
-  createdAt: string;
-  bodyOmitted?: boolean;
-  decryptedText?: string;
-};
+import type { ChatMessage } from "../types";
 
 type Props = {
   messages: ChatMessage[];
@@ -154,8 +137,8 @@ const Timeline: FC<Props> = ({
                                   });
                                   const urlObj = URL.createObjectURL(blob);
                                   window.open(urlObj, "_blank");
-                                } catch (err) {
-                                  console.error(err);
+                                } catch (_err) {
+                                  console.error(_err);
                                   alert("Failed to decrypt/open attachment");
                                 }
                               }}

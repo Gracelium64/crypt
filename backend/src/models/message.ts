@@ -42,4 +42,5 @@ export type MessageDocument = mongoose.InferSchemaType<typeof messageSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const Message = mongoose.model("Message", messageSchema);
+const Message = mongoose.model("Message", messageSchema);
+export default Message;

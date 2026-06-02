@@ -21,4 +21,5 @@ export type LinkDocument = mongoose.InferSchemaType<typeof linkSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const Link = mongoose.model("Link", linkSchema);
+const Link = mongoose.model("Link", linkSchema);
+export default Link;

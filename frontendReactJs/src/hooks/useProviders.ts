@@ -10,7 +10,7 @@ export default function useProviders() {
       if (!response.ok) throw new Error("Could not load provider status");
       const payload = await response.json();
       setProviderStatuses(payload.data ?? []);
-    } catch (err) {
+    } catch {
       setProviderStatuses([]);
     }
   }, []);

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { Account } from "../models/account.model.js";
+import { Account } from "#models";
 import { env } from "../config/env.js";
 
 const authRouter = Router();
@@ -40,12 +40,10 @@ authRouter.post("/auth/signup", async (req, res) => {
     res.status(200).json({ ok: true, data: { token } });
     return;
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return;
   }
 });
@@ -85,12 +83,10 @@ authRouter.post("/auth/login", async (req, res) => {
     res.status(200).json({ ok: true, data: { token } });
     return;
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return;
   }
 });
@@ -129,16 +125,14 @@ authRouter.get("/auth/me", requireAuth, async (req: any, res) => {
     return;
   }
 
-  res
-    .status(200)
-    .json({
-      ok: true,
-      data: {
-        email: account.email,
-        displayName: account.displayName,
-        id: account._id,
-      },
-    });
+  res.status(200).json({
+    ok: true,
+    data: {
+      email: account.email,
+      displayName: account.displayName,
+      id: account._id,
+    },
+  });
   return;
 });
 

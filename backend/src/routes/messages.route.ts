@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Message } from "../models/message.model.js";
+import { Message, ProviderConnection } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
 import { sendToProvider } from "../services/providers.service.js";
 import { requireAuth } from "./auth.route.js";
-import { ProviderConnection } from "../models/providerConnection.model.js";
 import { decryptSecret } from "../services/secret.service.js";
 
 const sendSchema = z.object({
@@ -178,12 +177,10 @@ messagesRouter.post("/messages/send", requireAuth, async (req: any, res) => {
     active: true,
   }).lean();
   if (!conn) {
-    res
-      .status(400)
-      .json({
-        ok: false,
-        error: `You must link your ${payload.provider} account before sending.`,
-      });
+    res.status(400).json({
+      ok: false,
+      error: `You must link your ${payload.provider} account before sending.`,
+    });
     return;
   }
   // If encrypt=true, require client-provided ciphertext (E2E). Do not persist plaintext.

@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
-import type { MessageDocument } from "../models/message.model.js";
+import type { MessageDocument } from "#models";
 
 let io: Server | null = null;
 

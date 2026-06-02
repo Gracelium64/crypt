@@ -69,7 +69,7 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     if (stored) {
       try {
         localPriv = JSON.parse(stored);
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -103,7 +103,7 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     } else {
       try {
         finalImageUrl = await uploadSelectedImage(file, undefined, authToken);
-      } catch (err) {
+      } catch {
         // fallback to base64 proxy
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();

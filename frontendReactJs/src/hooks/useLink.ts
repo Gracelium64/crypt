@@ -35,7 +35,7 @@ export default function useLink(
 
       try {
         navigator.clipboard?.writeText(`LINK ${j.data.code}`);
-      } catch (e) {
+      } catch {
         // ignore
       }
 
@@ -48,7 +48,7 @@ export default function useLink(
           ? (j.data.deepLinkMobile ?? j.data.deepLinkWeb ?? null)
           : (j.data.deepLinkWeb ?? j.data.deepLinkMobile ?? null);
         if (toOpen) window.open(toOpen, "_blank");
-      } catch (e) {
+      } catch {
         // ignore
       }
 
@@ -76,16 +76,12 @@ export default function useLink(
         if (!resp.ok) return;
         const j = await resp.json();
         if (cancelled) return;
-        const prev = linkStatus;
         setLinkStatus(j.data ?? null);
         if (j.data?.completed) {
           window.clearInterval(id);
           if (onComplete) onComplete(j.data);
         }
-        if (!prev?.completed && j.data?.completed && onComplete) {
-          onComplete(j.data);
-        }
-      } catch (err) {
+      } catch {
         // ignore polling errors
       }
     }, 2000);
@@ -94,7 +90,7 @@ export default function useLink(
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [linkCode]);
+  }, [linkCode, onComplete]);
 
   return {
     linkCode,

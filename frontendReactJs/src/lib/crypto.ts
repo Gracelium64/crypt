@@ -127,8 +127,8 @@ export const decryptFromSender = async (
       cipher,
     );
     return new TextDecoder().decode(plain);
-  } catch (err) {
-    console.error("decrypt failed", err);
+  } catch (_err) {
+    console.error("decrypt failed", _err);
     return null;
   }
 };

@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Key } from "../models/key.model.js";
+import { Key, ProviderConnection } from "#models";
 import { requireAuth } from "./auth.route.js";
-import { ProviderConnection } from "../models/providerConnection.model.js";
 
 const keysRouter = Router();
 
