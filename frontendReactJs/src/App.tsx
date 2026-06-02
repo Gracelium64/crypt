@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import { useEffect, useRef, useState, useCallback } from "react";
 import QRCode from "qrcode";
 import "./App.css";
 import { useAuth } from "./context/useAuth";
@@ -9,99 +8,22 @@ import LinkWizard from "./components/LinkWizard";
 import ConnectionsPanel from "./components/ConnectionsPanel";
 import Composer from "./components/Composer";
 import Timeline from "./components/Timeline";
-import { apiFetch, apiJson } from "./lib/api";
+import { apiFetch } from "./lib/api";
+import { deriveAesGcmKey } from "./lib/crypto";
+import useProviders from "./hooks/useProviders";
+import useConversations from "./hooks/useConversations";
+import useConnections from "./hooks/useConnections";
+import useLink from "./hooks/useLink";
+import useRealtime from "./hooks/useRealtime";
+import useSend from "./hooks/useSend";
+import SelectedConversationPanel from "./components/SelectedConversationPanel";
+import type { Provider, ChatMessage, ConversationSummary } from "./types";
 import {
-  isSecureCiphertext,
-  arrayBufferToBase64,
-  base64ToArrayBuffer,
-  fingerprintFromPubKey,
-  deriveAesGcmKey,
-  decryptFromSender,
-} from "./lib/crypto";
-import { sendMessageService } from "./services/messages";
+  generateKeypair as generateKeypairService,
+  registerPublicKey as registerPublicKeyService,
+} from "./services/keys";
 
-type Provider = "telegram" | "whatsapp";
-type MessageProvider = Provider;
-
-type ChatMessage = {
-  _id?: string;
-  id?: string;
-  provider: MessageProvider;
-  direction: "inbound" | "outbound";
-  from: string;
-  to: string;
-  chatId: string;
-  encryptedText: string;
-  // plaintext fields intentionally not stored on server for E2E
-  attachments: Array<{ type: "image"; url: string }>;
-  deliveryStatus?: "queued" | "sent" | "failed";
-  createdAt: string;
-  bodyOmitted?: boolean;
-  decryptedText?: string;
-};
-
-type ConversationSummary = {
-  provider: Provider;
-  chatId: string;
-  counterpart: string;
-  messageCount: number;
-  secureMessageCount: number;
-  plainMessageCount: number;
-  lastMessageAt: string;
-  lastDirection: "inbound" | "outbound";
-  lastMessagePreview: string;
-  securityState: "secure" | "plain" | "mixed";
-};
-
-type ProviderStatus = {
-  provider: Provider;
-  label: string;
-  icon: string;
-  webUrl: string;
-  backendReady: boolean;
-  webhookReady: boolean;
-  readiness: "ready" | "needs-setup";
-  setupNotes: string[];
-};
-
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
-const socket = io(apiBase, {
-  transports: ["websocket", "polling"],
-  autoConnect: true,
-});
-
-const providerMeta: Record<
-  Provider,
-  {
-    label: string;
-    icon: string;
-    webUrl: string;
-    accent: string;
-  }
-> = {
-  telegram: {
-    label: "Telegram",
-    icon: "✈",
-    webUrl: "https://web.telegram.org/k/",
-    accent: "#46a0f5",
-  },
-  whatsapp: {
-    label: "WhatsApp",
-    icon: "◉",
-    webUrl: "https://web.whatsapp.com/",
-    accent: "#25d366",
-  },
-};
-
-const supportedProviders: Provider[] = ["telegram", "whatsapp"];
-
-const toHumanTime = (value?: string) => {
-  if (!value) {
-    return "Just now";
-  }
-
-  return new Date(value).toLocaleString();
-};
+// Types are imported from ./types
 
 const trimPreview = (text: string) => {
   if (text.length <= 96) {
@@ -109,6 +31,25 @@ const trimPreview = (text: string) => {
   }
 
   return `${text.slice(0, 93)}...`;
+};
+
+const providerMeta: Record<
+  Provider,
+  { label: string; icon: string; accent: string }
+> = {
+  telegram: { label: "Telegram", icon: "✈️", accent: "#2CA5E0" },
+  whatsapp: { label: "WhatsApp", icon: "💬", accent: "#25D366" },
+};
+
+const supportedProviders: Provider[] = ["telegram", "whatsapp"];
+
+const toHumanTime = (iso?: string | null) => {
+  if (!iso) return "never";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch (e) {
+    return iso;
+  }
 };
 
 // upload helper types moved to `src/services/messages.ts`
@@ -127,46 +68,69 @@ function App() {
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [replyMode, setReplyMode] = useState<"secure" | "plain">("secure");
-  const [isRealtime, setIsRealtime] = useState(false);
+  // realtime connectivity handled by useRealtime hook
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>(
-    [],
-  );
+
   const [lastSync, setLastSync] = useState<string>("");
-  const [busy, setBusy] = useState(false);
+  const [localOwnerId, setLocalOwnerId] = useState("");
   const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
   const [privJwk, setPrivJwk] = useState<any | null>(null);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
-  const [linkCode, setLinkCode] = useState<string | null>(null);
-  const [linkProvider, setLinkProvider] = useState<Provider | null>(null);
-  const [linkExpiresAt, setLinkExpiresAt] = useState<string | null>(null);
-  const [linkStatus, setLinkStatus] = useState<{
-    completed: boolean;
-    providerChatId?: string;
-    providerDisplayName?: string;
-  } | null>(null);
-  const [linkDeepMobile, setLinkDeepMobile] = useState<string | null>(null);
-  const [linkDeepWeb, setLinkDeepWeb] = useState<string | null>(null);
-  const [linkBusy, setLinkBusy] = useState(false);
+  // link state managed by useLink hook (hookLinkCode, hookLinkProvider, ...)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const auth = useAuth();
-  const [verifyOpen, setVerifyOpen] = useState(false);
-  const [verifyOwner, setVerifyOwner] = useState<string | null>(null);
-  const [verifyPubKey, setVerifyPubKey] = useState<string | null>(null);
-  const [verifyFingerprint, setVerifyFingerprint] = useState<string | null>(
-    null,
+  // hooks/services
+  const convHook = useConversations();
+  const { sendMessage: sendMessageHook, busy: sendBusy } = useSend(
+    auth.token,
+    convHook,
   );
-  const [verifyQr, setVerifyQr] = useState<string | null>(null);
+  const connectionsHook = useConnections(auth.token);
+  const { providerStatuses, loadProviderStatuses } = useProviders();
+  const {
+    linkCode: hookLinkCode,
+    linkProvider: hookLinkProvider,
+    linkExpiresAt: hookLinkExpiresAt,
+    linkStatus: hookLinkStatus,
+    linkDeepMobile: hookLinkDeepMobile,
+    linkDeepWeb: hookLinkDeepWeb,
+    linkBusy: hookLinkBusy,
+    startLink: startLinkFn,
+    cancelLink: cancelLinkFn,
+  } = useLink(auth.token, async (data) => {
+    try {
+      await connectionsHook.loadConnectionsList();
+      if (data.provider) {
+        setProvider(data.provider as Provider);
+        if (data.providerChatId) {
+          setSelectedChatId(data.providerChatId);
+          await convHook.loadConversations(data.provider);
+          await convHook.loadMessages(
+            data.provider,
+            data.providerChatId,
+            undefined,
+            privJwk,
+            localOwnerId,
+          );
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    showToast(
+      `Linked ${data.provider} — you can now send secure messages to this chat.`,
+    );
+  });
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  // verification UI moved into SelectedConversationPanel
 
-  const [connections, setConnections] = useState<any[]>([]);
-  const [connectionsBusy, setConnectionsBusy] = useState(false);
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [editingTokenValue, setEditingTokenValue] = useState("");
   const [editingPhoneNumberId, setEditingPhoneNumberId] = useState("");
@@ -178,11 +142,6 @@ function App() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToastMessage(null), ms);
   };
-
-  const isMobileDevice = () =>
-    /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
-      navigator.userAgent || "",
-    );
 
   // onboarding checks
   const [keyRegistered, setKeyRegistered] = useState<boolean>(false);
@@ -203,24 +162,11 @@ function App() {
     if (!localOwnerId) return alert("Enter local ID first");
     setKeyBusy(true);
     try {
-      const kp = await crypto.subtle.generateKey(
-        { name: "ECDH", namedCurve: "P-256" },
-        true,
-        ["deriveKey"],
-      );
-      const pubRaw = await crypto.subtle.exportKey("raw", kp.publicKey);
-      const pubB64 = arrayBufferToBase64(pubRaw);
-      const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
-      localStorage.setItem(
-        `crypt:priv:${localOwnerId}`,
-        JSON.stringify(privJwk),
-      );
-      setPubKeyB64(pubB64);
-      setPrivJwk(privJwk);
-      const fp = await fingerprintFromPubKey(pubRaw);
-      setFingerprint(fp);
-      const qr = await QRCode.toDataURL(`${localOwnerId}:${pubB64}`);
-      setQrDataUrl(qr);
+      const r = await generateKeypairService(localOwnerId);
+      setPubKeyB64(r.pubB64);
+      setPrivJwk(r.privJwk);
+      setFingerprint(r.fingerprint);
+      setQrDataUrl(r.qrDataUrl);
       showToast("Keypair generated locally");
     } catch (err) {
       console.error(err);
@@ -235,17 +181,9 @@ function App() {
     try {
       if (!auth.user?.email && !localOwnerId)
         return alert("No owner ID available (log in or enter a local ID)");
-      await apiJson(
-        "/keys/register",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publicKey: pubKeyB64 }),
-        },
-        auth.token,
-      );
+      await registerPublicKeyService(pubKeyB64, auth.token);
       showToast("Public key registered");
-      void loadConnectionsList();
+      await connectionsHook.loadConnectionsList();
       await checkKeyRegistered();
     } catch (err) {
       console.error(err);
@@ -292,34 +230,20 @@ function App() {
   const selectedProviderStatus =
     providerStatuses.find((item) => item.provider === provider) ?? null;
 
-  const loadProviderStatuses = async () => {
-    const response = await apiFetch(`/providers/status`);
-    if (!response.ok) {
-      throw new Error("Could not load provider status");
-    }
-
-    const payload = await response.json();
-    setProviderStatuses((payload.data ?? []) as ProviderStatus[]);
-  };
+  // provider statuses handled by useProviders hook
 
   const loadConversations = async (currentProvider: Provider) => {
-    const response = await apiFetch(
-      `/conversations?provider=${currentProvider}&limit=200`,
-    );
-    if (!response.ok) {
-      throw new Error("Could not load conversations");
-    }
-
-    const payload = await response.json();
-    const data = (payload.data ?? []) as ConversationSummary[];
-    setConversations(data);
-
+    await convHook.loadConversations(currentProvider);
+    setConversations(convHook.conversations);
     setSelectedChatId((currentChatId) => {
-      if (currentChatId && data.some((item) => item.chatId === currentChatId)) {
+      if (
+        currentChatId &&
+        convHook.conversations.some((item) => item.chatId === currentChatId)
+      ) {
         return currentChatId;
       }
 
-      return data[0]?.chatId ?? "";
+      return convHook.conversations[0]?.chatId ?? "";
     });
   };
 
@@ -328,116 +252,26 @@ function App() {
     currentChatId: string,
     since?: string,
   ) => {
-    if (!currentChatId) {
-      setMessages([]);
-      setLastSync("");
-      return;
-    }
-
-    const params = new URLSearchParams({
-      provider: currentProvider,
-      chatId: currentChatId,
-      limit: "100",
-    });
-    if (since) {
-      params.set("since", since);
-    }
-
-    const response = await apiFetch(`/messages?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error("Could not load messages");
-    }
-
-    const payload = await response.json();
-    const incoming = (payload.data ?? []) as ChatMessage[];
-    // Attempt client-side decryption when possible
-    const tryDecrypt = async (items: ChatMessage[]) => {
-      const priv =
-        privJwk ??
-        (localOwnerId
-          ? JSON.parse(
-              localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-            )
-          : null);
-      if (!priv) return items;
-
-      const pubCache: Record<string, string | null> = {};
-
-      for (const item of items) {
-        const ct = item.encryptedText ?? "";
-        if (!isSecureCiphertext(ct)) continue;
-
-        const ownerId = item.direction === "inbound" ? item.from : item.to;
-        if (!ownerId) continue;
-
-        if (pubCache[ownerId] === undefined) {
-          try {
-            const resp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`);
-            if (!resp.ok) {
-              pubCache[ownerId] = null;
-            } else {
-              const j = await resp.json();
-              pubCache[ownerId] = j?.data?.publicKey ?? null;
-            }
-          } catch (err) {
-            pubCache[ownerId] = null;
-          }
-        }
-
-        const theirPub = pubCache[ownerId];
-        if (!theirPub) continue;
-
-        try {
-          const plain = await decryptFromSender(ct, priv, theirPub);
-          if (plain) item.decryptedText = plain;
-        } catch (err) {
-          // ignore decryption failures per-message
-        }
-      }
-
-      return items;
-    };
-
-    await tryDecrypt(incoming);
-
-    setMessages((current) => {
-      const map = new Map(current.map((item) => [item._id ?? item.id, item]));
-      for (const item of incoming) {
-        map.set(item._id ?? item.id, item);
-      }
-      return Array.from(map.values()).sort((left, right) =>
-        left.createdAt.localeCompare(right.createdAt),
-      );
-    });
-    setLastSync(incoming[incoming.length - 1]?.createdAt ?? "");
+    await convHook.loadMessages(
+      currentProvider,
+      currentChatId,
+      since,
+      privJwk,
+      localOwnerId,
+    );
+    setMessages(convHook.messages);
+    setLastSync(convHook.lastSync);
   };
 
   useEffect(() => {
     void loadProviderStatuses();
-  }, []);
+  }, [loadProviderStatuses]);
 
   // Auth context manages the current account
 
-  // Load provider connections for the signed-in account
-  const loadConnectionsList = async () => {
-    if (!auth?.token) {
-      setConnections([]);
-      return;
-    }
-    setConnectionsBusy(true);
-    try {
-      const j = await apiJson("/provider/connections", {}, auth.token);
-      setConnections(j.data ?? []);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to load connections");
-    } finally {
-      setConnectionsBusy(false);
-    }
-  };
-
+  // Load provider connections for the signed-in account (useConnections hook)
   useEffect(() => {
-    void loadConnectionsList();
+    void connectionsHook.loadConnectionsList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.token]);
 
@@ -454,141 +288,22 @@ function App() {
   const submitConnectionToken = async (connId: string) => {
     if (!editingTokenValue) return alert("Enter the provider token");
     try {
-      await apiJson(
-        `/provider/connections/${encodeURIComponent(connId)}/credentials`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: editingTokenValue,
-            phoneNumberId: editingPhoneNumberId || undefined,
-          }),
-        },
-        auth.token,
+      await connectionsHook.submitConnectionToken(
+        connId,
+        editingTokenValue,
+        editingPhoneNumberId || undefined,
       );
       alert("Stored token for connection");
       setEditingConnId(null);
       setEditingTokenValue("");
       setEditingPhoneNumberId("");
-      await loadConnectionsList();
     } catch (err) {
       console.error(err);
       alert("Failed to store token for connection");
     }
   };
 
-  // Polling for provider link status when a link code has been generated
-  useEffect(() => {
-    if (!linkCode) return;
-    let cancelled = false;
-    const id = window.setInterval(async () => {
-      try {
-        const resp = await apiFetch(
-          `/provider/link/status/${encodeURIComponent(linkCode)}`,
-        );
-        if (!resp.ok) return;
-        const j = await resp.json();
-        if (cancelled) return;
-        const prev = linkStatus;
-        setLinkStatus(j.data ?? null);
-        if (j.data?.completed) {
-          window.clearInterval(id);
-          // Refresh connections and conversations, then select the new chat
-          try {
-            await loadConnectionsList();
-            if (j.data.provider) {
-              // switch provider to the linked provider so the inbox shows
-              setProvider(j.data.provider as Provider);
-              if (j.data.providerChatId) {
-                setSelectedChatId(j.data.providerChatId);
-                await loadConversations(j.data.provider);
-                await loadMessages(j.data.provider, j.data.providerChatId);
-              }
-            }
-          } catch (err) {
-            // ignore refresh errors
-          }
-
-          // accessibility: move focus to main content and announce via toast
-          try {
-            const mainEl = document.querySelector(
-              ".workspace-grid",
-            ) as HTMLElement | null;
-            if (mainEl) mainEl.focus();
-          } catch (e) {
-            /* ignore */
-          }
-
-          showToast(
-            `Linked ${j.data.provider} — you can now send secure messages to this chat.`,
-          );
-        }
-        // if just transitioned from not-completed to completed, show toast
-        if (!prev?.completed && j.data?.completed) {
-          showToast(
-            `Linked ${j.data.provider} — you can now send secure messages to this chat.`,
-          );
-        }
-      } catch (err) {
-        // ignore polling errors
-      }
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [linkCode]);
-
-  const startLink = async (providerToLink: Provider) => {
-    setLinkBusy(true);
-    try {
-      const j = await apiJson(
-        "/provider/link/init",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: providerToLink }),
-        },
-        auth.token,
-      );
-      setLinkCode(j.data.code);
-      setLinkProvider(j.data.provider);
-      setLinkExpiresAt(j.data.expiresAt);
-      setLinkStatus({ completed: false });
-      setLinkDeepMobile(j.data.deepLinkMobile ?? null);
-      setLinkDeepWeb(j.data.deepLinkWeb ?? null);
-      // copy code to clipboard and open deep-link if provided to streamline UX
-      try {
-        const text = `LINK ${j.data.code}`;
-        navigator.clipboard?.writeText(text);
-      } catch (e) {
-        /* ignore clipboard failures */
-      }
-      // auto-open the most appropriate deep link for the device
-      try {
-        const preferMobile = isMobileDevice();
-        const toOpen = preferMobile
-          ? (j.data.deepLinkMobile ?? j.data.deepLinkWeb ?? null)
-          : (j.data.deepLinkWeb ?? j.data.deepLinkMobile ?? null);
-        if (toOpen) window.open(toOpen, "_blank");
-      } catch (e) {
-        // ignore popup failures
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to create link code");
-    } finally {
-      setLinkBusy(false);
-    }
-  };
-
-  const cancelLink = () => {
-    setLinkCode(null);
-    setLinkProvider(null);
-    setLinkExpiresAt(null);
-    setLinkStatus(null);
-  };
+  // Link polling and init handled by `useLink` hook (startLinkFn / cancelLinkFn)
 
   useEffect(() => {
     void loadConversations(provider);
@@ -603,68 +318,26 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, selectedChatId]);
 
-  useEffect(() => {
-    const onConnect = () => setIsRealtime(true);
-    const onDisconnect = () => setIsRealtime(false);
-    const onNewMessage = async (message: ChatMessage) => {
-      if (message.provider !== providerRef.current) {
-        return;
-      }
+  const onNewMessage = useCallback(
+    (message: ChatMessage) => {
+      if (message.provider !== providerRef.current) return;
 
       void loadConversations(providerRef.current);
 
-      if (message.chatId !== selectedChatIdRef.current) {
-        return;
+      if (message.chatId !== selectedChatIdRef.current) return;
+
+      if (convHook?.handleIncomingMessage) {
+        void convHook.handleIncomingMessage(message, privJwk, localOwnerId);
+      } else {
+        // fallback: append raw message
+        setMessages((current) => [...current, message]);
+        setLastSync(message.createdAt);
       }
+    },
+    [convHook, privJwk, localOwnerId],
+  );
 
-      // Try client-side decryption for the single incoming message
-      try {
-        const priv =
-          privJwk ??
-          (localOwnerId
-            ? JSON.parse(
-                localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-              )
-            : null);
-        if (priv && isSecureCiphertext(message.encryptedText ?? "")) {
-          const ownerId =
-            message.direction === "inbound" ? message.from : message.to;
-          if (ownerId) {
-            const keyResp = await apiFetch(
-              `/keys/${encodeURIComponent(ownerId)}`,
-            );
-            if (keyResp.ok) {
-              const kjson = await keyResp.json();
-              const theirPub = kjson?.data?.publicKey;
-              if (theirPub) {
-                const plain = await decryptFromSender(
-                  message.encryptedText ?? "",
-                  priv,
-                  theirPub,
-                );
-                if (plain) message.decryptedText = plain;
-              }
-            }
-          }
-        }
-      } catch (err) {
-        /* ignore decryption errors for live updates */
-      }
-
-      setMessages((current) => [...current, message]);
-      setLastSync(message.createdAt);
-    };
-
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("message:new", onNewMessage);
-
-    return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("message:new", onNewMessage);
-    };
-  }, []);
+  const { isRealtime } = useRealtime(onNewMessage, [onNewMessage]);
 
   useEffect(() => {
     if (isRealtime) {
@@ -679,7 +352,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [isRealtime, lastSync, provider, selectedChatId]);
 
-  const sendMessage = async () => {
+  const handleSend = async () => {
     if (!selectedChatId) {
       alert("Pick a chat from the provider inbox first.");
       return;
@@ -692,7 +365,6 @@ function App() {
       return;
     }
 
-    setBusy(true);
     try {
       const conversationTarget =
         selectedConversation?.counterpart || selectedChatId || "unknown";
@@ -711,7 +383,7 @@ function App() {
         }
       }
 
-      await sendMessageService({
+      const ok = await sendMessageHook({
         provider,
         selectedChatId,
         conversationTarget,
@@ -719,23 +391,24 @@ function App() {
         text,
         file,
         imageUrl,
-        authToken: auth.token,
         privJwk: localPriv,
         localOwnerId: localOwnerId || null,
       });
+
+      if (!ok) throw new Error("send failed");
 
       setText("");
       setImageUrl("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
-      await loadConversations(provider);
-      await loadMessages(provider, selectedChatId);
+      // Sync App state with convHook results
+      setConversations(convHook.conversations);
+      setMessages(convHook.messages);
+      setLastSync(convHook.lastSync);
     } catch (err) {
       console.error(err);
       showToast("Failed to send message");
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -852,12 +525,12 @@ function App() {
           authUserEmail={auth.user?.email}
           pubKeyB64={pubKeyB64}
           keyRegistered={keyRegistered}
-          connectionsCount={connections.length}
+          connectionsCount={connectionsHook.connections.length}
           generateKeypair={generateKeypair}
           registerPublicKey={registerPublicKey}
-          startLink={startLink}
+          startLink={startLinkFn}
           keyBusy={keyBusy}
-          linkBusy={linkBusy}
+          linkBusy={hookLinkBusy}
         />
 
         <KeyManager
@@ -875,21 +548,21 @@ function App() {
         />
 
         <LinkWizard
-          startLink={startLink}
-          linkCode={linkCode}
-          linkProvider={linkProvider}
-          linkExpiresAt={linkExpiresAt}
-          linkStatus={linkStatus}
-          linkDeepMobile={linkDeepMobile}
-          linkDeepWeb={linkDeepWeb}
-          linkBusy={linkBusy}
-          cancelLink={cancelLink}
+          startLink={startLinkFn}
+          linkCode={hookLinkCode}
+          linkProvider={hookLinkProvider as Provider | null}
+          linkExpiresAt={hookLinkExpiresAt}
+          linkStatus={hookLinkStatus}
+          linkDeepMobile={hookLinkDeepMobile}
+          linkDeepWeb={hookLinkDeepWeb}
+          linkBusy={hookLinkBusy}
+          cancelLink={cancelLinkFn}
         />
 
         <ConnectionsPanel
-          connections={connections}
-          connectionsBusy={connectionsBusy}
-          loadConnectionsList={loadConnectionsList}
+          connections={connectionsHook.connections}
+          connectionsBusy={connectionsHook.connectionsBusy}
+          loadConnectionsList={connectionsHook.loadConnectionsList}
           editingConnId={editingConnId}
           setEditingConnId={setEditingConnId}
           editingTokenValue={editingTokenValue}
@@ -968,7 +641,7 @@ function App() {
               selectedProviderStatus?.setupNotes ?? [
                 "Open the provider web client to authenticate the browser session.",
               ]
-            ).map((note) => (
+            ).map((note: string) => (
               <li key={note}>{note}</li>
             ))}
           </ul>
@@ -1026,7 +699,7 @@ function App() {
                       </span>
                     </div>
                     <p className="conversation-preview">
-                      {trimPreview(conversation.lastMessagePreview)}
+                      {trimPreview(conversation.lastMessagePreview ?? "")}
                     </p>
                     <div className="conversation-item-meta">
                       <span>{conversation.counterpart}</span>
@@ -1055,67 +728,9 @@ function App() {
                   </p>
                 </div>
 
-                <div className="selected-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => setReplyMode("secure")}
-                    disabled={!selectedConversation}
-                  >
-                    Start secure chat
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={async () => {
-                      if (!selectedConversation) return;
-                      setVerifyOpen(true);
-                      setVerifyOwner(null);
-                      setVerifyPubKey(null);
-                      setVerifyFingerprint(null);
-                      setVerifyQr(null);
-                      try {
-                        const resp = await apiFetch(
-                          `/provider/resolve?provider=${encodeURIComponent(selectedConversation.provider)}&chatId=${encodeURIComponent(selectedConversation.chatId)}`,
-                        );
-                        if (!resp.ok) throw new Error("resolve failed");
-                        const j = await resp.json();
-                        const ownerEmail = j.data?.email ?? null;
-                        setVerifyOwner(
-                          ownerEmail ?? selectedConversation.chatId,
-                        );
-                        if (ownerEmail) {
-                          const kresp = await apiFetch(
-                            `/keys/${encodeURIComponent(ownerEmail)}`,
-                          );
-                          if (kresp.ok) {
-                            const kj = await kresp.json();
-                            const pub = kj?.data?.publicKey;
-                            if (pub) {
-                              setVerifyPubKey(pub);
-                              const ab = base64ToArrayBuffer(pub);
-                              const fp = await fingerprintFromPubKey(ab);
-                              setVerifyFingerprint(fp);
-                              const qr = await QRCode.toDataURL(
-                                `${ownerEmail}:${pub}`,
-                              );
-                              setVerifyQr(qr);
-                            }
-                          }
-                        }
-                      } catch (err) {
-                        console.error(err);
-                        alert("Failed to load verification info");
-                      }
-                    }}
-                    disabled={!selectedConversation}
-                  >
-                    Verify
-                  </button>
-                  <div style={{ fontSize: 12, color: "#666" }}>
-                    Open your provider client to send the LINK code.
-                  </div>
-                </div>
+                <SelectedConversationPanel
+                  selectedConversation={selectedConversation}
+                />
               </div>
 
               {selectedConversation && (
@@ -1137,42 +752,7 @@ function App() {
                 </div>
               )}
 
-              {verifyOpen && (
-                <div className="panel verify-panel elevated">
-                  <h4>Verify contact</h4>
-                  <div>
-                    <strong>Owner:</strong> {verifyOwner}
-                  </div>
-                  {verifyPubKey ? (
-                    <div>
-                      <div>
-                        <strong>Fingerprint:</strong> {verifyFingerprint}
-                      </div>
-                      {verifyQr && (
-                        <img src={verifyQr} alt="QR" style={{ width: 160 }} />
-                      )}
-                      <div style={{ marginTop: 8 }}>
-                        <button
-                          onClick={() => {
-                            // mark verified locally
-                            if (!verifyOwner) return;
-                            const key = `crypt:verified:${verifyOwner}`;
-                            localStorage.setItem(key, "1");
-                            alert("Marked as verified locally");
-                          }}
-                        >
-                          Mark verified (local)
-                        </button>
-                        <button onClick={() => setVerifyOpen(false)}>
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>No public key found for this contact.</div>
-                  )}
-                </div>
-              )}
+              {/* verification UI handled by SelectedConversationPanel */}
             </section>
 
             <section className="panel composer elevated">
@@ -1226,8 +806,8 @@ function App() {
                 fileInputRef={fileInputRef}
                 removeFile={removeFile}
                 replyMode={replyMode}
-                busy={busy}
-                sendMessage={sendMessage}
+                busy={sendBusy}
+                sendMessage={handleSend}
                 selectedConversation={selectedConversation}
                 selectedProviderStatus={selectedProviderStatus}
               />

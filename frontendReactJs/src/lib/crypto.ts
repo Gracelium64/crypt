@@ -55,7 +55,7 @@ export const importPrivateJwkKey = async (jwk: any) =>
     jwk,
     { name: "ECDH", namedCurve: "P-256" },
     false,
-    ["deriveBits"],
+    ["deriveKey", "deriveBits"],
   );
 
 export const deriveAesGcmKey = async (privJwkObj: any, otherPubB64: string) => {
