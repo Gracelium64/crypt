@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
@@ -135,13 +135,24 @@ export default function useConversations() {
     [],
   );
 
-  return {
-    conversations,
-    messages,
-    lastSync,
-    setMessages,
-    loadConversations,
-    loadMessages,
-    handleIncomingMessage,
-  };
+  return useMemo(
+    () => ({
+      conversations,
+      messages,
+      lastSync,
+      setMessages,
+      loadConversations,
+      loadMessages,
+      handleIncomingMessage,
+    }),
+    [
+      conversations,
+      messages,
+      lastSync,
+      setMessages,
+      loadConversations,
+      loadMessages,
+      handleIncomingMessage,
+    ],
+  );
 }

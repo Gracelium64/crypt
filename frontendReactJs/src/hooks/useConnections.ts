@@ -41,10 +41,24 @@ export default function useConnections(authToken?: string | null) {
     [authToken, loadConnectionsList],
   );
 
+  const deleteConnection = useCallback(
+    async (connId: string) => {
+      if (!authToken) throw new Error("not authenticated");
+      await apiJson(
+        `/provider/connections/${encodeURIComponent(connId)}`,
+        { method: "DELETE" },
+        authToken,
+      );
+      await loadConnectionsList();
+    },
+    [authToken, loadConnectionsList],
+  );
+
   return {
     connections,
     connectionsBusy,
     loadConnectionsList,
     submitConnectionToken,
+    deleteConnection,
   };
 }

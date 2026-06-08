@@ -28,7 +28,6 @@ const messageSchema = new mongoose.Schema(
       enum: ["queued", "sent", "failed"],
       default: "queued",
     },
-    providerResponse: { type: mongoose.Schema.Types.Mixed },
     // Store ciphertext only. Plaintext is intentionally not persisted for E2E.
     encryptedText: { type: String, default: "" },
     // If inbound plaintext was omitted for privacy, mark it here.

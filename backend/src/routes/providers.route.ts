@@ -43,7 +43,14 @@ const telegramInboundSchema = z.object({
       message_id: z.number(),
       text: z.string().optional(),
       chat: z.object({ id: z.union([z.number(), z.string()]) }),
-      from: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
+      from: z
+        .object({
+          id: z.union([z.number(), z.string()]),
+          username: z.string().optional(),
+          first_name: z.string().optional(),
+          last_name: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -90,6 +97,22 @@ providersRouter.get("/providers/status", (_req, res) => {
   return;
 });
 
+providersRouter.get("/providers/telegram/webhook", (req, res) => {
+  // Verify Telegram's secret token header for GET requests (initial verification)
+  const incomingSecret =
+    req.header("x-telegram-bot-api-secret-token") ??
+    req.header("X-Telegram-Bot-Api-Secret-Token");
+  if (
+    env.TELEGRAM_WEBHOOK_SECRET &&
+    incomingSecret !== env.TELEGRAM_WEBHOOK_SECRET
+  ) {
+    res.status(403).json({ ok: false, error: "forbidden" });
+    return;
+  }
+  res.status(200).json({ ok: true });
+  return;
+});
+
 providersRouter.post("/providers/telegram/webhook", async (req, res) => {
   // If a webhook secret is configured, verify Telegram's secret header
   const incomingSecret =
@@ -112,9 +135,11 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
   const msg = parsed.data.message;
   const incomingRaw = msg.text ?? "";
 
-  // Detect a linking code message (user asked the hosted bot to link)
+  // Detect a linking code — matches both "LINK CODE" (manual) and "/start CODE" (deep link)
   try {
-    const match = incomingRaw.match(/\bLINK\s+([A-Za-z0-9]{4,12})\b/i);
+    const match =
+      incomingRaw.match(/^\/start\s+([A-Za-z0-9]{4,12})$/i) ??
+      incomingRaw.match(/\bLINK\s+([A-Za-z0-9]{4,12})\b/i);
     if (match) {
       const code = match[1].toUpperCase();
       const link = await Link.findOne({
@@ -124,11 +149,16 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
         expiresAt: { $gt: new Date() },
       });
       if (link) {
+        const tgUsername = msg.from?.username ?? null;
+        const nameFromFields =
+          [msg.from?.first_name, msg.from?.last_name]
+            .filter(Boolean)
+            .join(" ") || String(msg.from?.id ?? msg.chat?.id ?? "unknown");
+        const tgDisplayName = tgUsername ?? nameFromFields;
+
         link.completed = true;
         link.providerChatId = String(msg.chat.id);
-        link.providerDisplayName = String(
-          msg.from?.id ?? msg.chat?.id ?? "unknown",
-        );
+        link.providerDisplayName = tgDisplayName;
         await link.save();
         console.log(
           "Link code completed via Telegram webhook:",
@@ -149,16 +179,41 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
                 accountId: link.claimedAccountId,
                 provider: "telegram",
                 providerChatId: String(msg.chat.id),
-                displayName: link.providerDisplayName,
+                displayName: tgDisplayName,
+                username: tgUsername ?? undefined,
               });
               console.log(
                 "Created ProviderConnection for account",
                 link.claimedAccountId.toString(),
               );
+            } else if (tgUsername && !existing.username) {
+              await ProviderConnection.updateOne(
+                { _id: existing._id },
+                { $set: { username: tgUsername, displayName: tgDisplayName } },
+              );
             }
           }
         } catch (err) {
           console.error("Failed to create ProviderConnection:", err);
+        }
+
+        // Send in-Telegram confirmation so the user knows to switch back
+        try {
+          if (env.TELEGRAM_BOT_TOKEN) {
+            await fetch(
+              `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: msg.chat.id,
+                  text: "✅ Linked! Switch back to the app.",
+                }),
+              },
+            );
+          }
+        } catch (err) {
+          console.error("Failed to send Telegram link confirmation:", err);
         }
       }
     }

@@ -2,10 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import "./App.css";
 import { useAuth } from "./context/useAuth";
 import KeyManager from "./components/KeyManager";
-import OnboardingPanel from "./components/OnboardingPanel";
 import LinkWizard from "./components/LinkWizard";
 import ConnectionsPanel from "./components/ConnectionsPanel";
-import Composer from "./components/Composer";
 import Timeline from "./components/Timeline";
 import { apiFetch } from "./lib/api";
 import { deriveAesGcmKey } from "./lib/crypto";
@@ -15,8 +13,8 @@ import useConnections from "./hooks/useConnections";
 import useLink from "./hooks/useLink";
 import useRealtime from "./hooks/useRealtime";
 import useSend from "./hooks/useSend";
-import SelectedConversationPanel from "./components/SelectedConversationPanel";
-import type { Provider, ChatMessage, ConversationSummary } from "./types";
+import FindContact from "./components/FindContact";
+import type { Provider, ChatMessage } from "./types";
 import {
   generateKeypair as generateKeypairService,
   registerPublicKey as registerPublicKeyService,
@@ -42,15 +40,6 @@ const providerMeta: Record<
 
 const supportedProviders: Provider[] = ["telegram", "whatsapp"];
 
-const toHumanTime = (iso?: string | null) => {
-  if (!iso) return "never";
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-};
-
 // upload helper types moved to `src/services/messages.ts`
 
 // uploadSelectedImage moved to `src/services/messages.ts` and used by sendMessageService
@@ -63,15 +52,10 @@ function App() {
   const [provider, setProvider] = useState<Provider>("telegram");
   const [selectedChatId, setSelectedChatId] = useState("");
   const [text, setText] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [replyMode, setReplyMode] = useState<"secure" | "plain">("secure");
   // realtime connectivity handled by useRealtime hook
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-
-  const [lastSync, setLastSync] = useState<string>("");
   const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
   const [privJwk, setPrivJwk] = useState<any | null>(null);
@@ -86,6 +70,7 @@ function App() {
   const auth = useAuth();
   // hooks/services
   const convHook = useConversations();
+  const { handleIncomingMessage } = convHook;
   const { sendMessage: sendMessageHook, busy: sendBusy } = useSend(
     auth.token,
     convHook,
@@ -100,6 +85,15 @@ function App() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToastMessage(null), ms);
   };
+  const [tab, setTab] = useState<"chats" | "find" | "settings">("chats");
+  const [chatOpen, setChatOpen] = useState(false);
+
+  const openConversation = (chatId: string, prov?: Provider) => {
+    if (prov) setProvider(prov);
+    setSelectedChatId(chatId);
+    setChatOpen(true);
+  };
+
   const handleLinkComplete = useCallback(
     async (data: any) => {
       try {
@@ -121,11 +115,12 @@ function App() {
       } catch {
         // ignore
       }
+      setTab("chats");
       showToast(
         `Linked ${data.provider} — you can now send secure messages to this chat.`,
       );
     },
-    [connectionsHook, convHook, localOwnerId, privJwk],
+    [connectionsHook, convHook.loadConversations, convHook.loadMessages, localOwnerId, privJwk],
   );
 
   const {
@@ -141,27 +136,14 @@ function App() {
   } = useLink(auth.token, handleLinkComplete);
   // verification UI moved into SelectedConversationPanel
 
-  const [editingConnId, setEditingConnId] = useState<string | null>(null);
-  const [editingTokenValue, setEditingTokenValue] = useState("");
-  const [editingPhoneNumberId, setEditingPhoneNumberId] = useState("");
-
-  // onboarding checks
-  const [keyRegistered, setKeyRegistered] = useState<boolean>(false);
-  const checkKeyRegistered = async () => {
-    if (!localOwnerId || !pubKeyB64) return setKeyRegistered(false);
-    try {
-      const resp = await apiFetch(`/keys/${encodeURIComponent(localOwnerId)}`);
-      if (!resp.ok) return setKeyRegistered(false);
-      const j = await resp.json();
-      const remote = j?.data?.publicKey ?? null;
-      setKeyRegistered(remote === pubKeyB64);
-    } catch {
-      setKeyRegistered(false);
-    }
-  };
-
   const generateKeypair = async () => {
     if (!localOwnerId) return alert("Enter local ID first");
+    if (!window.isSecureContext) {
+      alert(
+        "Key generation requires HTTPS.\n\nPlease access the app via the Cloudflare tunnel URL (https://...) instead of the local network address.",
+      );
+      return;
+    }
     setKeyBusy(true);
     try {
       const r = await generateKeypairService(localOwnerId);
@@ -172,11 +154,33 @@ function App() {
       showToast("Keypair generated locally");
     } catch (_err) {
       console.error(_err);
-      alert("Key generation failed");
+      alert(`Key generation failed: ${_err instanceof Error ? _err.message : String(_err)}`);
     } finally {
       setKeyBusy(false);
     }
   };
+
+  const deleteConversation = useCallback(
+    async (convProvider: Provider, convChatId: string) => {
+      if (!confirm("Delete all messages in this conversation?")) return;
+      try {
+        const resp = await apiFetch(
+          `/messages/conversation?provider=${encodeURIComponent(convProvider)}&chatId=${encodeURIComponent(convChatId)}`,
+          { method: "DELETE" },
+          auth.token,
+        );
+        if (!resp.ok) throw new Error("delete failed");
+        setChatOpen(false);
+        setSelectedChatId("");
+        await convHook.loadConversations(convProvider);
+        showToast("Conversation deleted");
+      } catch (_err) {
+        console.error(_err);
+        showToast("Failed to delete conversation");
+      }
+    },
+    [auth.token, convHook.loadConversations],
+  );
 
   const registerPublicKey = async () => {
     if (!pubKeyB64) return alert("Generate a key first");
@@ -186,7 +190,6 @@ function App() {
       await registerPublicKeyService(pubKeyB64, auth.token);
       showToast("Public key registered");
       await connectionsHook.loadConnectionsList();
-      await checkKeyRegistered();
     } catch (_err) {
       console.error(_err);
       showToast("Failed to register key");
@@ -225,7 +228,7 @@ function App() {
   };
 
   const selectedConversation =
-    conversations.find(
+    convHook.conversations.find(
       (conversation) => conversation.chatId === selectedChatId,
     ) ?? null;
 
@@ -237,20 +240,21 @@ function App() {
   const loadConversations = useCallback(
     async (currentProvider: Provider) => {
       await convHook.loadConversations(currentProvider);
-      setConversations(convHook.conversations);
-      setSelectedChatId((currentChatId) => {
-        if (
-          currentChatId &&
-          convHook.conversations.some((item) => item.chatId === currentChatId)
-        ) {
-          return currentChatId;
-        }
-
-        return convHook.conversations[0]?.chatId ?? "";
-      });
     },
-    [convHook],
+    [convHook.loadConversations],
   );
+
+  useEffect(() => {
+    setSelectedChatId((currentChatId) => {
+      if (
+        currentChatId &&
+        convHook.conversations.some((item) => item.chatId === currentChatId)
+      ) {
+        return currentChatId;
+      }
+      return convHook.conversations[0]?.chatId ?? "";
+    });
+  }, [convHook.conversations]);
 
   const loadMessages = useCallback(
     async (
@@ -265,10 +269,8 @@ function App() {
         privJwk,
         localOwnerId,
       );
-      setMessages(convHook.messages);
-      setLastSync(convHook.lastSync);
     },
-    [convHook, privJwk, localOwnerId],
+    [convHook.loadMessages, privJwk, localOwnerId],
   );
 
   useEffect(() => {
@@ -288,37 +290,15 @@ function App() {
     if (auth.user?.email) setLocalOwnerId(auth.user.email);
   }, [auth.user]);
 
-  useEffect(() => {
-    void checkKeyRegistered();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localOwnerId, pubKeyB64]);
 
-  const submitConnectionToken = async (connId: string) => {
-    if (!editingTokenValue) return alert("Enter the provider token");
-    try {
-      await connectionsHook.submitConnectionToken(
-        connId,
-        editingTokenValue,
-        editingPhoneNumberId || undefined,
-      );
-      alert("Stored token for connection");
-      setEditingConnId(null);
-      setEditingTokenValue("");
-      setEditingPhoneNumberId("");
-    } catch (_err) {
-      console.error(_err);
-      alert("Failed to store token for connection");
-    }
-  };
 
   // Link polling and init handled by `useLink` hook (startLinkFn / cancelLinkFn)
 
   useEffect(() => {
     void loadConversations(provider);
-    setMessages([]);
-    setLastSync("");
+    convHook.setMessages([]);
     setReplyMode("secure");
-  }, [provider, loadConversations]);
+  }, [provider, loadConversations, convHook.setMessages]);
 
   useEffect(() => {
     void loadMessages(provider, selectedChatId);
@@ -332,18 +312,16 @@ function App() {
 
       if (message.chatId !== selectedChatIdRef.current) return;
 
-      if (convHook?.handleIncomingMessage) {
-        void convHook.handleIncomingMessage(message, privJwk, localOwnerId);
+      if (handleIncomingMessage) {
+        void handleIncomingMessage(message, privJwk, localOwnerId);
       } else {
-        // fallback: append raw message
-        setMessages((current) => [...current, message]);
-        setLastSync(message.createdAt);
+        convHook.setMessages((current) => [...current, message]);
       }
     },
-    [convHook, privJwk, localOwnerId, loadConversations],
+    [handleIncomingMessage, privJwk, localOwnerId, loadConversations, convHook.setMessages],
   );
 
-  const { isRealtime } = useRealtime(onNewMessage, [onNewMessage]);
+  const { isRealtime } = useRealtime(onNewMessage);
 
   useEffect(() => {
     if (isRealtime) {
@@ -352,11 +330,18 @@ function App() {
 
     const timer = window.setInterval(() => {
       void loadConversations(provider);
-      void loadMessages(provider, selectedChatId, lastSync || undefined);
+      void loadMessages(provider, selectedChatId, convHook.lastSync || undefined);
     }, 10000);
 
     return () => window.clearInterval(timer);
-  }, [isRealtime, lastSync, provider, selectedChatId, loadConversations, loadMessages]);
+  }, [
+    isRealtime,
+    convHook.lastSync,
+    provider,
+    selectedChatId,
+    loadConversations,
+    loadMessages,
+  ]);
 
   const handleSend = async () => {
     if (!selectedChatId) {
@@ -395,7 +380,6 @@ function App() {
         replyMode,
         text,
         file,
-        imageUrl,
         privJwk: localPriv,
         localOwnerId: localOwnerId || null,
       });
@@ -403,13 +387,9 @@ function App() {
       if (!ok) throw new Error("send failed");
 
       setText("");
-      setImageUrl("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
-      setConversations(convHook.conversations);
-      setMessages(convHook.messages);
-      setLastSync(convHook.lastSync);
     } catch (_err) {
       console.error(_err);
       showToast("Failed to send message");
@@ -419,431 +399,359 @@ function App() {
   return (
     <div className="app-shell">
       {toastMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          style={{
-            position: "fixed",
-            right: 20,
-            bottom: 20,
-            background: "#333",
-            color: "#fff",
-            padding: "8px 12px",
-            borderRadius: 8,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-            zIndex: 9999,
-          }}
-        >
+        <div className="toast" role="status" aria-live="polite" aria-atomic="true">
           {toastMessage}
         </div>
       )}
-      <aside className="provider-sidebar">
-        <div className="brand-block panel elevated">
-          <span className="eyebrow">Crypt Companion</span>
-          <h1>Provider-first demo workspace</h1>
-          <p>
-            Open Telegram Web or WhatsApp Web, then use the inbox here to review
-            secure and plain threads.
-          </p>
-        </div>
 
-        <div className="panel account-panel">
-          <h3>Account</h3>
-          {auth.user ? (
-            <div>
-              <div>Signed in as {auth.user?.email}</div>
-              <div>{auth.user?.displayName}</div>
-              <button
-                onClick={() => {
-                  void auth.logout();
-                }}
-              >
-                Sign out
-              </button>
+      {chatOpen ? (
+        /* ── Chat view ── */
+        <>
+          <header className="app-header">
+            <button className="header-back" type="button" onClick={() => setChatOpen(false)} aria-label="Back">‹</button>
+            <div className="header-title">
+              <strong>{selectedConversation?.counterpart || selectedChatId}</strong>
+              <span>{getProviderLabel(provider)}</span>
             </div>
-          ) : (
-            <div>
-              <label>
-                Email
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
-              <label>
-                Display name
-                <input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  disabled={authBusy}
-                  onClick={async () => {
-                    setAuthBusy(true);
-                    try {
-                      await auth.register({ email, password, displayName });
-                    } catch (_err) {
-                      console.error(_err);
-                      alert("Signup failed");
-                    } finally {
-                      setAuthBusy(false);
-                    }
-                  }}
-                >
-                  Sign up
-                </button>
+            <span className={`header-status${isRealtime ? " live" : ""}`} title={isRealtime ? "Live" : "Polling"} />
+            <button
+              className="header-action btn-danger"
+              type="button"
+              title="Delete conversation"
+              onClick={() => void deleteConversation(provider, selectedChatId)}
+              style={{ fontSize: 16 }}
+            >
+              🗑
+            </button>
+          </header>
 
-                <button
-                  disabled={authBusy}
-                  onClick={async () => {
-                    setAuthBusy(true);
-                    try {
-                      await auth.login({ email, password });
-                    } catch (_err) {
-                      console.error(_err);
-                      alert("Login failed");
-                    } finally {
-                      setAuthBusy(false);
-                    }
-                  }}
-                >
-                  Sign in
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <OnboardingPanel
-          authUserEmail={auth.user?.email}
-          pubKeyB64={pubKeyB64}
-          keyRegistered={keyRegistered}
-          connectionsCount={connectionsHook.connections.length}
-          generateKeypair={generateKeypair}
-          registerPublicKey={registerPublicKey}
-          startLink={startLinkFn}
-          keyBusy={keyBusy}
-          linkBusy={hookLinkBusy}
-        />
-
-        <KeyManager
-          localOwnerId={localOwnerId}
-          setLocalOwnerId={setLocalOwnerId}
-          pubKeyB64={pubKeyB64}
-          privJwk={privJwk}
-          fingerprint={fingerprint}
-          qrDataUrl={qrDataUrl}
-          keyBusy={keyBusy}
-          generateKeypair={generateKeypair}
-          registerPublicKey={registerPublicKey}
-          setPrivJwk={setPrivJwk}
-          authUserEmail={auth.user?.email}
-        />
-
-        <LinkWizard
-          startLink={startLinkFn}
-          linkCode={hookLinkCode}
-          linkProvider={hookLinkProvider as Provider | null}
-          linkExpiresAt={hookLinkExpiresAt}
-          linkStatus={hookLinkStatus}
-          linkDeepMobile={hookLinkDeepMobile}
-          linkDeepWeb={hookLinkDeepWeb}
-          linkBusy={hookLinkBusy}
-          cancelLink={cancelLinkFn}
-        />
-
-        <ConnectionsPanel
-          connections={connectionsHook.connections}
-          connectionsBusy={connectionsHook.connectionsBusy}
-          loadConnectionsList={connectionsHook.loadConnectionsList}
-          editingConnId={editingConnId}
-          setEditingConnId={setEditingConnId}
-          editingTokenValue={editingTokenValue}
-          setEditingTokenValue={setEditingTokenValue}
-          editingPhoneNumberId={editingPhoneNumberId}
-          setEditingPhoneNumberId={setEditingPhoneNumberId}
-          submitConnectionToken={submitConnectionToken}
-        />
-
-        <nav className="provider-nav" aria-label="Provider navigation">
-          {supportedProviders.map((item) => {
-            const isActive = item === provider;
-            const status = providerStatuses.find(
-              (entry) => entry.provider === item,
-            );
-
-            return (
-              <button
-                key={item}
-                type="button"
-                className={`provider-tab ${isActive ? "active" : ""}`}
-                onClick={() => setProvider(item)}
-                style={{ ["--accent" as string]: providerMeta[item].accent }}
-              >
-                <span className="provider-icon">{providerMeta[item].icon}</span>
-                <span className="provider-copy">
-                  <strong>{providerMeta[item].label}</strong>
-                  <span>
-                    {status?.readiness === "ready"
-                      ? "Backend ready"
-                      : "Needs setup"}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="panel status-card">
-          <div className="status-row-top">
-            <span className={isRealtime ? "status good" : "status warn"}>
-              {isRealtime ? "Realtime connected" : "Polling fallback active"}
-            </span>
-            <span className="status subtle">API ready</span>
-          </div>
-
-          <div className="provider-status-copy">
-            <h2>{getProviderLabel(provider)}</h2>
-            <p>
-              {providerMeta[provider].label} Web opens in a separate tab for the
-              provider login session.
-            </p>
-            <div style={{ fontSize: 13, color: "#666" }}>
-              Use your {providerMeta[provider].label} client to send and receive
-              messages — linking works from web or mobile clients.
-            </div>
-          </div>
-
-          <div className="status-detail-grid">
-            <div>
-              <span className="label">Backend</span>
-              <strong>
-                {selectedProviderStatus?.backendReady ? "Ready" : "Needs setup"}
-              </strong>
-            </div>
-            <div>
-              <span className="label">Webhook</span>
-              <strong>
-                {selectedProviderStatus?.webhookReady ? "Verified" : "Pending"}
-              </strong>
-            </div>
-          </div>
-
-          <ul className="status-notes">
-            {(
-              selectedProviderStatus?.setupNotes ?? [
-                "Open the provider web client to authenticate the browser session.",
-              ]
-            ).map((note: string) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </div>
-      </aside>
-
-      <main className="workspace-grid" tabIndex={-1}>
-        <header className="workspace-header panel elevated">
-          <div>
-            <span className="eyebrow">Inbox</span>
-            <h2>{getProviderLabel(provider)} conversations</h2>
-            <p>
-              Chats are listed from stored messages. Secure threads are derived
-              from encrypted traffic, plain threads from unencrypted traffic.
-            </p>
-          </div>
-          <div className="header-meta">
-            <span className="pill">{conversations.length} threads</span>
-            <span className="pill">{messages.length} messages loaded</span>
-          </div>
-        </header>
-
-        <section className="inbox-layout">
-          <aside className="panel inbox-list elevated">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Available chats</span>
-                <h3>Secure and plain threads</h3>
-              </div>
+          <div className="chat-screen">
+            <div className="timeline">
+              <Timeline
+                messages={convHook.messages}
+                privJwk={privJwk}
+                localOwnerId={localOwnerId}
+                deriveAesGcmKey={deriveAesGcmKey}
+              />
             </div>
 
-            {conversations.length === 0 ? (
-              <div className="empty-state">
-                <p>No chats yet for this provider.</p>
-                <p>
-                  Start a conversation in {getProviderLabel(provider)} Web, or
-                  wait for the webhook to land a message here.
-                </p>
-              </div>
-            ) : (
-              conversations.map((conversation) => {
-                const isSelected = conversation.chatId === selectedChatId;
-
-                return (
-                  <button
-                    key={`${conversation.provider}:${conversation.chatId}`}
-                    type="button"
-                    className={`conversation-item ${isSelected ? "active" : ""}`}
-                    onClick={() => setSelectedChatId(conversation.chatId)}
-                  >
-                    <div className="conversation-item-top">
-                      <strong>{conversation.chatId}</strong>
-                      <span className={`pill ${conversation.securityState}`}>
-                        {conversation.securityState}
-                      </span>
-                    </div>
-                    <p className="conversation-preview">
-                      {trimPreview(conversation.lastMessagePreview ?? "")}
-                    </p>
-                    <div className="conversation-item-meta">
-                      <span>{conversation.counterpart}</span>
-                      <span>{conversation.messageCount} msgs</span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </aside>
-
-          <section className="workspace-main">
-            <section className="panel elevated selected-conversation">
-              <div className="selected-header">
-                <div>
-                  <span className="eyebrow">Current thread</span>
-                  <h3>
-                    {selectedConversation
-                      ? selectedConversation.chatId
-                      : "Select a chat"}
-                  </h3>
-                  <p>
-                    {selectedConversation
-                      ? `Counterpart: ${selectedConversation.counterpart} • last updated ${toHumanTime(selectedConversation.lastMessageAt)}`
-                      : "Pick a chat from the inbox to review the timeline and reply securely."}
-                  </p>
-                </div>
-
-                <SelectedConversationPanel
-                  selectedConversation={selectedConversation}
-                />
-              </div>
-
-              {selectedConversation && (
-                <div className="conversation-stats">
-                  <span className="pill">
-                    {selectedConversation.messageCount} total
-                  </span>
-                  <span className="pill secure">
-                    {selectedConversation.secureMessageCount} secure
-                  </span>
-                  <span className="pill plain">
-                    {selectedConversation.plainMessageCount} plain
-                  </span>
-                  <span
-                    className={`pill ${selectedConversation.securityState}`}
-                  >
-                    {selectedConversation.securityState} thread
-                  </span>
-                </div>
-              )}
-
-              {/* verification UI handled by SelectedConversationPanel */}
-            </section>
-
-            <section className="panel composer elevated">
-              <div className="composer-header">
-                <div>
-                  <span className="eyebrow">Reply composer</span>
-                  <h3>
-                    {replyMode === "secure" ? "Secure reply" : "Plain reply"}
-                  </h3>
-                </div>
-                <div
-                  className="mode-toggle"
-                  role="group"
-                  aria-label="Reply mode"
-                >
+            <div className="composer">
+              <div className="composer-toolbar">
+                <div className="composer-mode">
                   <button
                     type="button"
-                    className={
-                      replyMode === "secure"
-                        ? "mode-button active"
-                        : "mode-button"
-                    }
+                    className={`mode-btn${replyMode === "secure" ? " active" : ""}`}
                     onClick={() => setReplyMode("secure")}
-                    disabled={!selectedConversation}
                   >
                     Secure
                   </button>
                   <button
                     type="button"
-                    className={
-                      replyMode === "plain"
-                        ? "mode-button active"
-                        : "mode-button"
-                    }
+                    className={`mode-btn${replyMode === "plain" ? " active" : ""}`}
                     onClick={() => setReplyMode("plain")}
-                    disabled={!selectedConversation}
                   >
                     Plain
                   </button>
                 </div>
               </div>
 
-              <Composer
-                text={text}
-                setText={setText}
-                imageUrl={imageUrl}
-                setImageUrl={setImageUrl}
-                file={file}
-                setFile={setFile}
-                filePreview={filePreview}
-                fileInputRef={fileInputRef}
-                removeFile={removeFile}
-                replyMode={replyMode}
-                busy={sendBusy}
-                sendMessage={handleSend}
-                selectedConversation={selectedConversation}
-                selectedProviderStatus={selectedProviderStatus}
-              />
-            </section>
-
-            <section className="panel timeline elevated">
-              <div className="section-heading timeline-heading">
-                <div>
-                  <span className="eyebrow">Timeline</span>
-                  <h3>
-                    {selectedConversation
-                      ? "Conversation history"
-                      : "No thread selected"}
-                  </h3>
+              {file && (
+                <div className="file-preview">
+                  {filePreview && <img src={filePreview} alt="" />}
+                  <span>{file.name} ({Math.round(file.size / 1024)} KB)</span>
+                  <button className="btn-danger btn-sm" type="button" onClick={removeFile}>✕</button>
                 </div>
-                <span className={isRealtime ? "status good" : "status warn"}>
-                  {isRealtime
-                    ? "Realtime connected"
-                    : "Polling fallback active"}
-                </span>
+              )}
+
+              <div className="composer-row">
+                <label className="composer-attach" style={{ cursor: "pointer" }} title="Attach image">
+                  📎
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    disabled={!selectedChatId}
+                  />
+                </label>
+                <textarea
+                  className="composer-input"
+                  rows={1}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder={selectedChatId ? "Type a message…" : "Pick a chat first"}
+                  disabled={!selectedChatId}
+                />
+                <button
+                  className="composer-send"
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={
+                    sendBusy ||
+                    !selectedChatId ||
+                    (!text && !file) ||
+                    !selectedProviderStatus?.backendReady
+                  }
+                  aria-label="Send"
+                >
+                  ➤
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* ── Main app with tabs ── */
+        <>
+          <header className="app-header">
+            <h1>Crypt</h1>
+            {tab === "chats" && (
+              <div className="provider-pills">
+                {supportedProviders.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`provider-pill${p === provider ? " active" : ""}`}
+                    onClick={() => setProvider(p)}
+                  >
+                    {providerMeta[p].icon} {providerMeta[p].label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <span className={`header-status${isRealtime ? " live" : ""}`} />
+          </header>
+
+          {/* Chats tab */}
+          {tab === "chats" && (
+            <div className="screen">
+              {convHook.conversations.length === 0 ? (
+                <div className="empty-screen">
+                  <div className="empty-icon">💬</div>
+                  <h3>No chats yet</h3>
+                  <p>Link your Telegram or WhatsApp account in Settings to see conversations here.</p>
+                  <button type="button" onClick={() => setTab("settings")}>Go to Settings</button>
+                </div>
+              ) : (
+                <div className="conv-list">
+                  {convHook.conversations.map((conv) => (
+                    <button
+                      key={`${conv.provider}:${conv.chatId}`}
+                      type="button"
+                      className={`conv-item${conv.chatId === selectedChatId ? " active" : ""}`}
+                      onClick={() => openConversation(conv.chatId, conv.provider)}
+                    >
+                      <div className="conv-avatar">
+                        {(conv.counterpart || conv.chatId || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="conv-body">
+                        <div className="conv-top">
+                          <span className="conv-name">{conv.counterpart || conv.chatId}</span>
+                          {conv.lastMessageAt && (
+                            <span className="conv-time">
+                              {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <span className="conv-preview">{trimPreview(conv.lastMessagePreview ?? "")}</span>
+                          <span className={`conv-badge ${conv.securityState}`}>{conv.securityState}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Find tab */}
+          {tab === "find" && (
+            <div className="screen">
+              <FindContact
+                provider={provider}
+                onStartConversation={(chatId, contactProvider) => {
+                  openConversation(chatId, contactProvider);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Settings tab */}
+          {tab === "settings" && (
+            <div className="screen settings-screen">
+              {/* Account */}
+              <div className="settings-section">
+                <div className="settings-section-title">Account</div>
+                {auth.user ? (
+                  <div className="settings-row">
+                    <div className="settings-row-label">
+                      <strong>{auth.user.displayName || auth.user.email}</strong>
+                      <span>{auth.user.email}</span>
+                    </div>
+                    <button className="btn-ghost btn-sm" type="button" onClick={() => void auth.logout()}>
+                      Sign out
+                    </button>
+                  </div>
+                ) : (
+                  <div className="auth-form">
+                    <div style={{ padding: "12px 0 4px" }}>
+                      <label>Email</label>
+                      <input value={email} onChange={(e) => setEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <label>Password</label>
+                      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    </div>
+                    <div>
+                      <label>Display name</label>
+                      <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                    </div>
+                    <div className="auth-actions">
+                      <button
+                        type="button"
+                        disabled={authBusy}
+                        onClick={async () => {
+                          setAuthBusy(true);
+                          try { await auth.register({ email, password, displayName }); }
+                          catch { alert("Signup failed"); }
+                          finally { setAuthBusy(false); }
+                        }}
+                      >
+                        Sign up
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={authBusy}
+                        onClick={async () => {
+                          setAuthBusy(true);
+                          try { await auth.login({ email, password }); }
+                          catch { alert("Login failed"); }
+                          finally { setAuthBusy(false); }
+                        }}
+                      >
+                        Sign in
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <Timeline
-                messages={messages}
-                privJwk={privJwk}
-                localOwnerId={localOwnerId}
-                deriveAesGcmKey={deriveAesGcmKey}
-              />
-            </section>
-          </section>
-        </section>
-      </main>
+              {/* Security & Keys */}
+              {auth.user && (
+                <div className="settings-section">
+                  <div className="settings-section-title">Security & Keys</div>
+                  <div style={{ padding: "0 16px 12px" }}>
+                    <KeyManager
+                      localOwnerId={localOwnerId}
+                      setLocalOwnerId={setLocalOwnerId}
+                      pubKeyB64={pubKeyB64}
+                      privJwk={privJwk}
+                      fingerprint={fingerprint}
+                      qrDataUrl={qrDataUrl}
+                      keyBusy={keyBusy}
+                      generateKeypair={generateKeypair}
+                      registerPublicKey={registerPublicKey}
+                      setPrivJwk={setPrivJwk}
+                      authUserEmail={auth.user?.email}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Link Provider */}
+              {auth.user && (
+                <div className="settings-section">
+                  <div className="settings-section-title">Link Provider</div>
+                  <div style={{ padding: "4px 0 8px" }}>
+                    <LinkWizard
+                      startLink={startLinkFn}
+                      linkCode={hookLinkCode}
+                      linkProvider={hookLinkProvider as Provider | null}
+                      linkExpiresAt={hookLinkExpiresAt}
+                      linkStatus={hookLinkStatus}
+                      linkDeepMobile={hookLinkDeepMobile}
+                      linkDeepWeb={hookLinkDeepWeb}
+                      linkBusy={hookLinkBusy}
+                      cancelLink={cancelLinkFn}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Connections */}
+              {auth.user && (
+                <div className="settings-section">
+                  <div className="settings-section-title">Connections</div>
+                  <ConnectionsPanel
+                    connections={connectionsHook.connections}
+                    connectionsBusy={connectionsHook.connectionsBusy}
+                    loadConnectionsList={connectionsHook.loadConnectionsList}
+                    deleteConnection={connectionsHook.deleteConnection}
+                  />
+                </div>
+              )}
+
+              {/* Provider Status */}
+              <div className="settings-section">
+                <div className="settings-section-title">Provider Status</div>
+                {supportedProviders.map((p) => {
+                  const st = providerStatuses.find((s) => s.provider === p);
+                  const ready = st?.readiness === "ready";
+                  return (
+                    <div key={p} className="settings-row">
+                      <div className="settings-row-label">
+                        <strong>{providerMeta[p].icon} {providerMeta[p].label}</strong>
+                        <span>{ready ? "Backend ready" : "Needs setup — add credentials"}</span>
+                      </div>
+                      <span className={`chip ${ready ? "green" : "warn"}`}>{ready ? "✓" : "!"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ height: 24 }} />
+            </div>
+          )}
+
+          {/* Bottom navigation */}
+          <nav className="bottom-nav" aria-label="Main navigation">
+            <button
+              type="button"
+              className={`nav-tab${tab === "chats" ? " active" : ""}`}
+              onClick={() => setTab("chats")}
+            >
+              <span className="nav-icon">💬</span>
+              Chats
+            </button>
+            <button
+              type="button"
+              className={`nav-tab${tab === "find" ? " active" : ""}`}
+              onClick={() => setTab("find")}
+            >
+              <span className="nav-icon">🔍</span>
+              Find
+            </button>
+            <button
+              type="button"
+              className={`nav-tab${tab === "settings" ? " active" : ""}`}
+              onClick={() => setTab("settings")}
+            >
+              <span className="nav-icon">⚙️</span>
+              Settings
+            </button>
+          </nav>
+        </>
+      )}
+
     </div>
   );
 }

@@ -28,7 +28,6 @@ export const broadcastMessage = (message: MessageDocument) => {
     deliveryStatus: message.deliveryStatus,
     encryptedText: message.encryptedText,
     bodyOmitted: Boolean(message.bodyOmitted),
-    providerResponse: message.providerResponse,
     attachments: message.attachments,
     createdAt: message.createdAt,
   });
