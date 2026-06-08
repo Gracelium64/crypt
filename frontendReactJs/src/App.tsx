@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import "./App.css";
 import { useAuth } from "./context/useAuth";
 import KeyManager from "./components/KeyManager";
-import LinkWizard from "./components/LinkWizard";
 import ConnectionsPanel from "./components/ConnectionsPanel";
 import Timeline from "./components/Timeline";
 import { apiFetch } from "./lib/api";
@@ -10,10 +9,10 @@ import { deriveAesGcmKey } from "./lib/crypto";
 import useProviders from "./hooks/useProviders";
 import useConversations from "./hooks/useConversations";
 import useConnections from "./hooks/useConnections";
-import useLink from "./hooks/useLink";
 import useRealtime from "./hooks/useRealtime";
 import useSend from "./hooks/useSend";
 import FindContact from "./components/FindContact";
+import ConnectTelegram from "./components/ConnectTelegram";
 import type { Provider, ChatMessage } from "./types";
 import {
   generateKeypair as generateKeypairService,
@@ -62,14 +61,13 @@ function App() {
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
-  // link state managed by useLink hook (hookLinkCode, hookLinkProvider, ...)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const auth = useAuth();
   // hooks/services
-  const convHook = useConversations();
+  const convHook = useConversations(auth.token);
   const { handleIncomingMessage } = convHook;
   const { sendMessage: sendMessageHook, busy: sendBusy } = useSend(
     auth.token,
@@ -77,64 +75,34 @@ function App() {
   );
   const connectionsHook = useConnections(auth.token);
   const { providerStatuses, loadProviderStatuses } = useProviders();
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
-
-  const showToast = (msg: string, ms = 4000) => {
-    setToastMessage(msg);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToastMessage(null), ms);
-  };
   const [tab, setTab] = useState<"chats" | "find" | "settings">("chats");
   const [chatOpen, setChatOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastsEnabled, setToastsEnabled] = useState(
+    () => localStorage.getItem("crypt:toasts") !== "off",
+  );
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = window.setTimeout(() => setToastMessage(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [toastMessage]);
+
+  const showToast = (msg: string) => {
+    if (toastsEnabled) setToastMessage(msg);
+  };
+
+  const toggleToasts = () => {
+    const next = !toastsEnabled;
+    setToastsEnabled(next);
+    localStorage.setItem("crypt:toasts", next ? "on" : "off");
+  };
 
   const openConversation = (chatId: string, prov?: Provider) => {
     if (prov) setProvider(prov);
     setSelectedChatId(chatId);
     setChatOpen(true);
   };
-
-  const handleLinkComplete = useCallback(
-    async (data: any) => {
-      try {
-        await connectionsHook.loadConnectionsList();
-        if (data.provider) {
-          setProvider(data.provider as Provider);
-          if (data.providerChatId) {
-            setSelectedChatId(data.providerChatId);
-            await convHook.loadConversations(data.provider);
-            await convHook.loadMessages(
-              data.provider,
-              data.providerChatId,
-              undefined,
-              privJwk,
-              localOwnerId,
-            );
-          }
-        }
-      } catch {
-        // ignore
-      }
-      setTab("chats");
-      showToast(
-        `Linked ${data.provider} — you can now send secure messages to this chat.`,
-      );
-    },
-    [connectionsHook, convHook.loadConversations, convHook.loadMessages, localOwnerId, privJwk],
-  );
-
-  const {
-    linkCode: hookLinkCode,
-    linkProvider: hookLinkProvider,
-    linkExpiresAt: hookLinkExpiresAt,
-    linkStatus: hookLinkStatus,
-    linkDeepMobile: hookLinkDeepMobile,
-    linkDeepWeb: hookLinkDeepWeb,
-    linkBusy: hookLinkBusy,
-    startLink: startLinkFn,
-    cancelLink: cancelLinkFn,
-  } = useLink(auth.token, handleLinkComplete);
-  // verification UI moved into SelectedConversationPanel
 
   const generateKeypair = async () => {
     if (!localOwnerId) return alert("Enter local ID first");
@@ -151,7 +119,6 @@ function App() {
       setPrivJwk(r.privJwk);
       setFingerprint(r.fingerprint);
       setQrDataUrl(r.qrDataUrl);
-      showToast("Keypair generated locally");
     } catch (_err) {
       console.error(_err);
       alert(`Key generation failed: ${_err instanceof Error ? _err.message : String(_err)}`);
@@ -173,10 +140,8 @@ function App() {
         setChatOpen(false);
         setSelectedChatId("");
         await convHook.loadConversations(convProvider);
-        showToast("Conversation deleted");
       } catch (_err) {
         console.error(_err);
-        showToast("Failed to delete conversation");
       }
     },
     [auth.token, convHook.loadConversations],
@@ -188,11 +153,9 @@ function App() {
       if (!auth.user?.email && !localOwnerId)
         return alert("No owner ID available (log in or enter a local ID)");
       await registerPublicKeyService(pubKeyB64, auth.token);
-      showToast("Public key registered");
       await connectionsHook.loadConnectionsList();
     } catch (_err) {
       console.error(_err);
-      showToast("Failed to register key");
     }
   };
 
@@ -285,14 +248,68 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.token]);
 
-  // Auto-derive local owner id from signed-in account
+  // Auto-derive local owner id and auto-setup E2E keypair when signed in
   useEffect(() => {
-    if (auth.user?.email) setLocalOwnerId(auth.user.email);
-  }, [auth.user]);
+    if (!auth.user?.email || !auth.token) return;
+    const email = auth.user.email;
+    setLocalOwnerId(email);
+
+    if (!window.isSecureContext) return;
+
+    const autoSetupKey = async () => {
+      const { generateKeypair, registerPublicKey } = await import("./services/keys");
+
+      const storedPriv = localStorage.getItem(`crypt:priv:${email}`);
+      const storedPub = localStorage.getItem(`crypt:pub:${email}`);
+
+      if (storedPriv && storedPub) {
+        let jwk: any;
+        try { jwk = JSON.parse(storedPriv); } catch { jwk = null; }
+
+        if (jwk) {
+          // Patch key_ops in-place if needed — avoids regenerating and breaking old messages
+          if (!Array.isArray(jwk.key_ops) || !jwk.key_ops.includes("deriveBits")) {
+            jwk = { ...jwk, key_ops: ["deriveKey", "deriveBits"] };
+            localStorage.setItem(`crypt:priv:${email}`, JSON.stringify(jwk));
+          }
+
+          try {
+            await crypto.subtle.importKey(
+              "jwk", jwk,
+              { name: "ECDH", namedCurve: "P-256" },
+              false,
+              ["deriveKey", "deriveBits"],
+            );
+            setPrivJwk(jwk);
+            setPubKeyB64(storedPub);
+            await registerPublicKey(storedPub, auth.token);
+            return;
+          } catch {
+            // Truly corrupted — fall through to regenerate
+            localStorage.removeItem(`crypt:priv:${email}`);
+            localStorage.removeItem(`crypt:pub:${email}`);
+          }
+        }
+      }
+
+      // No key yet — generate silently and register
+      try {
+        const r = await generateKeypair(email);
+        setPrivJwk(r.privJwk);
+        setPubKeyB64(r.pubB64);
+        setFingerprint(r.fingerprint);
+        setQrDataUrl(r.qrDataUrl);
+        localStorage.setItem(`crypt:pub:${email}`, r.pubB64);
+        await registerPublicKey(r.pubB64, auth.token);
+      } catch (err) {
+        console.error("Auto key setup failed:", err);
+      }
+    };
+
+    void autoSetupKey();
+  }, [auth.user?.email, auth.token]);
 
 
-
-  // Link polling and init handled by `useLink` hook (startLinkFn / cancelLinkFn)
 
   useEffect(() => {
     void loadConversations(provider);
@@ -303,6 +320,36 @@ function App() {
   useEffect(() => {
     void loadMessages(provider, selectedChatId);
   }, [provider, selectedChatId, loadMessages]);
+
+  // Re-decrypt already-loaded messages when the private key becomes available
+  // (handles the race where messages loaded before autoSetupKey completed)
+  useEffect(() => {
+    if (!privJwk || !localOwnerId || convHook.messages.length === 0) return;
+    const reDecrypt = async () => {
+      const { isSecureCiphertext, decryptFromSender } = await import("./lib/crypto");
+      const updated = await Promise.all(
+        convHook.messages.map(async (msg) => {
+          if (msg.decryptedText) return msg; // already decrypted
+          const ct = msg.encryptedText ?? "";
+          if (!isSecureCiphertext(ct)) return msg;
+          try {
+            const ownerId = msg.direction === "inbound" ? msg.from : msg.to;
+            if (!ownerId) return msg;
+            const kresp = await fetch(`/api/keys/${encodeURIComponent(ownerId)}`);
+            if (!kresp.ok) return msg;
+            const kj = await kresp.json();
+            const theirPub = kj?.data?.publicKey;
+            if (!theirPub) return msg;
+            const plain = await decryptFromSender(ct, privJwk, theirPub);
+            if (!plain) return msg;
+            return { ...msg, decryptedText: plain };
+          } catch { return msg; }
+        }),
+      );
+      convHook.setMessages(updated);
+    };
+    void reDecrypt();
+  }, [privJwk]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
@@ -357,8 +404,7 @@ function App() {
     }
 
     try {
-      const conversationTarget =
-        selectedConversation?.counterpart || selectedChatId || "unknown";
+      const conversationTarget = selectedChatId;
 
       let localPriv = privJwk;
       if (replyMode === "secure" && !localPriv && localOwnerId) {
@@ -373,7 +419,7 @@ function App() {
         }
       }
 
-      const ok = await sendMessageHook({
+      await sendMessageHook({
         provider,
         selectedChatId,
         conversationTarget,
@@ -384,23 +430,22 @@ function App() {
         localOwnerId: localOwnerId || null,
       });
 
-      if (!ok) throw new Error("send failed");
-
       setText("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
     } catch (_err) {
       console.error(_err);
-      showToast("Failed to send message");
+      showToast(`Send failed: ${_err instanceof Error ? _err.message : String(_err)}`);
     }
   };
 
   return (
     <div className="app-shell">
       {toastMessage && (
-        <div className="toast" role="status" aria-live="polite" aria-atomic="true">
-          {toastMessage}
+        <div className="toast" role="status">
+          <span style={{ flex: 1 }}>{toastMessage}</span>
+          <button className="toast-close" type="button" onClick={() => setToastMessage(null)} aria-label="Dismiss">✕</button>
         </div>
       )}
 
@@ -410,7 +455,7 @@ function App() {
           <header className="app-header">
             <button className="header-back" type="button" onClick={() => setChatOpen(false)} aria-label="Back">‹</button>
             <div className="header-title">
-              <strong>{selectedConversation?.counterpart || selectedChatId}</strong>
+              <strong>{selectedConversation?.counterpartName || selectedConversation?.counterpart || selectedChatId}</strong>
               <span>{getProviderLabel(provider)}</span>
             </div>
             <span className={`header-status${isRealtime ? " live" : ""}`} title={isRealtime ? "Live" : "Polling"} />
@@ -549,11 +594,11 @@ function App() {
                       onClick={() => openConversation(conv.chatId, conv.provider)}
                     >
                       <div className="conv-avatar">
-                        {(conv.counterpart || conv.chatId || "?").charAt(0).toUpperCase()}
+                        {(conv.counterpartName || conv.counterpart || conv.chatId || "?").charAt(0).toUpperCase()}
                       </div>
                       <div className="conv-body">
                         <div className="conv-top">
-                          <span className="conv-name">{conv.counterpart || conv.chatId}</span>
+                          <span className="conv-name">{conv.counterpartName || conv.counterpart || conv.chatId}</span>
                           {conv.lastMessageAt && (
                             <span className="conv-time">
                               {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -667,21 +712,17 @@ function App() {
                 </div>
               )}
 
-              {/* Link Provider */}
+              {/* Connect Telegram */}
               {auth.user && (
                 <div className="settings-section">
-                  <div className="settings-section-title">Link Provider</div>
-                  <div style={{ padding: "4px 0 8px" }}>
-                    <LinkWizard
-                      startLink={startLinkFn}
-                      linkCode={hookLinkCode}
-                      linkProvider={hookLinkProvider as Provider | null}
-                      linkExpiresAt={hookLinkExpiresAt}
-                      linkStatus={hookLinkStatus}
-                      linkDeepMobile={hookLinkDeepMobile}
-                      linkDeepWeb={hookLinkDeepWeb}
-                      linkBusy={hookLinkBusy}
-                      cancelLink={cancelLinkFn}
+                  <div className="settings-section-title">Connect Telegram</div>
+                  <div style={{ padding: "4px 16px 12px" }}>
+                    <ConnectTelegram
+                      token={auth.token}
+                      onConnected={() => {
+                        void connectionsHook.loadConnectionsList();
+                        showToast("Telegram connected");
+                      }}
                     />
                   </div>
                 </div>
@@ -699,6 +740,25 @@ function App() {
                   />
                 </div>
               )}
+
+              {/* Notifications */}
+              <div className="settings-section">
+                <div className="settings-section-title">Notifications</div>
+                <div className="settings-row">
+                  <div className="settings-row-label">
+                    <strong>Toast messages</strong>
+                    <span>Brief pop-up notifications</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={toastsEnabled ? "btn-ghost btn-sm" : "btn-sm"}
+                    style={toastsEnabled ? { color: "var(--green)" } : {}}
+                    onClick={toggleToasts}
+                  >
+                    {toastsEnabled ? "On" : "Off"}
+                  </button>
+                </div>
+              </div>
 
               {/* Provider Status */}
               <div className="settings-section">

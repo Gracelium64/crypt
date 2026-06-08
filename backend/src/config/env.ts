@@ -13,6 +13,8 @@ const envSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().default("replace_me"),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_BOT_USERNAME: z.string().optional(),
+  TELEGRAM_API_ID: z.coerce.number().optional(),
+  TELEGRAM_API_HASH: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_NUMBER: z.string().optional(),

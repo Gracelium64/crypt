@@ -22,6 +22,7 @@ export interface ConversationSummary {
   provider: Provider;
   chatId: string;
   counterpart?: string;
+  counterpartName?: string;
   lastMessagePreview?: string;
   lastMessageAt?: string | null;
   messageCount?: number;

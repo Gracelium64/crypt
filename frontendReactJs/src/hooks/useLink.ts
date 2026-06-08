@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiJson } from "../lib/api";
 
 const SESSION_KEY = "crypt:pendingLink";
@@ -136,6 +136,11 @@ export default function useLink(
     setLinkStatus(null);
   };
 
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
+
   useEffect(() => {
     if (!linkCode) return;
     let cancelled = false;
@@ -154,7 +159,9 @@ export default function useLink(
         if (j.data?.completed) {
           clearPending();
           window.clearInterval(intervalId);
-          if (onComplete) onComplete(j.data);
+          cancelled = true;
+          setLinkCode(null);
+          if (onCompleteRef.current) onCompleteRef.current(j.data);
         }
       } catch {
         // ignore polling errors
@@ -176,7 +183,7 @@ export default function useLink(
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [linkCode, onComplete]);
+  }, [linkCode]);
 
   return {
     linkCode,
