@@ -3,9 +3,7 @@ import { z } from "zod";
 import { Message, ProviderConnection } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
-import { sendToProvider } from "../services/providers.service.js";
 import { requireAuth } from "./auth.route.js";
-import { decryptSecret } from "../services/secret.service.js";
 
 const sendSchema = z.object({
   provider: z.enum(["telegram", "whatsapp"]),
@@ -194,42 +192,16 @@ messagesRouter.post("/messages/send", requireAuth, async (req: any, res) => {
   const storedCipher = payload.encryptedText ?? "";
   const bodyOmitted = !payload.encryptedText;
 
-  const textToSend = storedCipher || payload.text || "";
-
-  // If the connection stores its own encrypted token, use it; otherwise rely on server env
-  const opts: Record<string, unknown> = {};
-  if ((conn as any).encryptedToken) {
-    try {
-      const token = decryptSecret((conn as any).encryptedToken);
-      (opts as any).tokenOverride = token;
-      if ((conn as any).meta?.phoneNumberId) {
-        (opts as any).phoneNumberIdOverride = (conn as any).meta.phoneNumberId;
-      }
-    } catch (err) {
-      console.error("Failed to decrypt provider token for connection:", err);
-    }
-  }
-
-  const providerResult = await sendToProvider(
-    {
-      provider: payload.provider,
-      to: payload.to,
-      chatId: payload.chatId,
-      text: textToSend,
-      attachments: payload.attachments,
-    },
-    opts as any,
-  );
-
+  // Messages are delivered Crypt-internally via Socket.IO only.
+  // The provider (Telegram/WhatsApp) is used for auth/linking and inbound,
+  // not for outbound message transport — so messages never appear in the bot chat.
   const message = await Message.create({
     provider: payload.provider,
     direction: "outbound",
     from: payload.from,
     to: payload.to,
     chatId: payload.chatId,
-    providerMessageId: providerResult.providerMessageId,
-    deliveryStatus: providerResult.deliveryStatus,
-    providerResponse: providerResult.providerResponse,
+    deliveryStatus: "sent",
     encryptedText: storedCipher,
     bodyOmitted,
     attachments: payload.attachments,
@@ -237,18 +209,29 @@ messagesRouter.post("/messages/send", requireAuth, async (req: any, res) => {
 
   broadcastMessage(message);
 
-  res.status(201).json({
-    data: {
-      message,
-      providerPayloadPreview: {
-        text: textToSend,
-        attachments: payload.attachments,
-      },
-      providerResult,
-    },
-  });
+  res.status(201).json({ data: { message } });
   return;
 });
 
-// Note: mock inbound simulation endpoint removed to enforce live-only demo.
-// Incoming messages must arrive via provider webhooks (Telegram/WhatsApp).
+// Delete all messages for a given conversation (provider + chatId)
+messagesRouter.delete("/messages/conversation", requireAuth, async (req: any, res) => {
+  const provider = String(req.query.provider || "");
+  const chatId = String(req.query.chatId || "");
+  if (!provider || !chatId) {
+    res.status(400).json({ ok: false, error: "missing provider or chatId" });
+    return;
+  }
+  const result = await Message.deleteMany({ provider: provider as any, chatId });
+  res.json({ ok: true, deleted: result.deletedCount });
+  return;
+});
+
+// Delete all messages (clear inbox) for the calling account's linked provider
+messagesRouter.delete("/messages/all", requireAuth, async (req: any, res) => {
+  const provider = String(req.query.provider || "");
+  const query: Record<string, unknown> = {};
+  if (provider) query.provider = provider;
+  const result = await Message.deleteMany(query);
+  res.json({ ok: true, deleted: result.deletedCount });
+  return;
+});

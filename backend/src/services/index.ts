@@ -4,7 +4,6 @@ export {
   uploadBufferToCloudinary,
   downloadAndUploadWhatsappMedia,
 } from "./media.service.js";
-export { encryptSecret, decryptSecret } from "./secret.service.js";
 export {
   encryptText,
   decryptMarkedText,

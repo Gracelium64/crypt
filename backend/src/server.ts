@@ -18,9 +18,21 @@ import { initRealtime } from "#services/realtime.service.js";
 
 const app = express();
 
+// Support comma-separated CORS origins (e.g. "http://localhost:5173,http://192.168.0.104:5173")
+const parseOrigins = (raw?: string) => {
+  if (!raw) return undefined;
+  if (raw.trim() === "*") return "*";
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+};
+
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: parseOrigins(env.CORS_ORIGIN),
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 app.use(express.json({ limit: "4mb" }));
@@ -48,8 +60,9 @@ const bootstrap = async () => {
   const server = http.createServer(app);
   initRealtime(server, env.CORS_ORIGIN);
 
-  server.listen(env.PORT, () => {
-    console.log(`Backend listening on http://localhost:${env.PORT}`);
+  // listen on all interfaces so the backend is reachable from other machines on LAN
+  server.listen(env.PORT, "0.0.0.0", () => {
+    console.log(`Backend listening on http://0.0.0.0:${env.PORT}`);
   });
 };
 

@@ -1,25 +1,8 @@
 import { Router } from "express";
-import { z } from "zod";
-import { ProviderConnection } from "#models";
+import { ProviderConnection, Key } from "#models";
 import { requireAuth } from "./auth.route.js";
-import { env } from "../config/env.js";
-import { encryptSecret } from "../services/secret.service.js";
 
 const router = Router();
-
-// Middleware: allow either admin header or normal JWT auth.
-const adminOrAuth = (req: any, res: any, next: any) => {
-  const adminHeader = String(req.header("x-webhook-admin-token") || "");
-  if (
-    adminHeader &&
-    env.WEBHOOK_ADMIN_TOKEN &&
-    adminHeader === env.WEBHOOK_ADMIN_TOKEN
-  ) {
-    req.__isAdminOverride = true;
-    return next();
-  }
-  return requireAuth(req, res, next);
-};
 
 router.get("/provider/connections", requireAuth, async (req: any, res) => {
   const accountId = req.account?.accountId;
@@ -30,6 +13,50 @@ router.get("/provider/connections", requireAuth, async (req: any, res) => {
 
   const connections = await ProviderConnection.find({ accountId }).lean();
   res.status(200).json({ ok: true, data: connections });
+  return;
+});
+
+// Find a contact by @username within a provider (public endpoint)
+router.get("/provider/contact/search", async (req, res) => {
+  const provider = String(req.query.provider || "");
+  const rawUsername = String(req.query.username || "").replace(/^@/, "").trim();
+
+  if (!provider || !rawUsername) {
+    res.status(400).json({ ok: false, error: "missing provider or username" });
+    return;
+  }
+
+  const usernameRegex = new RegExp(`^${rawUsername}$`, "i");
+  // Search by username field first; fall back to displayName for connections
+  // created before the username field was added (re-linking fixes this permanently).
+  const conn = await ProviderConnection.findOne({
+    provider: provider as any,
+    $or: [
+      { username: usernameRegex },
+      // displayName fallback: only consider it a username match when it starts
+      // with a letter (i.e. not an old numeric-id display name)
+      { displayName: usernameRegex },
+    ],
+    active: true,
+  }).lean();
+
+  if (!conn) {
+    res.status(404).json({ ok: false, error: "user not found — they may need to re-link their account" });
+    return;
+  }
+
+  const keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
+
+  res.status(200).json({
+    ok: true,
+    data: {
+      provider: conn.provider,
+      providerChatId: conn.providerChatId,
+      username: conn.username ?? null,
+      displayName: conn.displayName ?? null,
+      publicKey: keyRecord?.publicKey ?? null,
+    },
+  });
   return;
 });
 
@@ -92,62 +119,6 @@ router.delete(
     await conn.deleteOne();
     res.status(200).json({ ok: true });
     return;
-  },
-);
-
-// Set encrypted provider credentials for a connection (admin or owner)
-router.post(
-  "/provider/connections/:id/credentials",
-  adminOrAuth,
-  async (req: any, res) => {
-    const parsed = z
-      .object({
-        token: z.string().min(1),
-        phoneNumberId: z.string().optional(),
-      })
-      .safeParse(req.body ?? {});
-
-    if (!parsed.success) {
-      res.status(400).json({ ok: false, error: parsed.error.flatten() });
-      return;
-    }
-
-    const { token, phoneNumberId } = parsed.data;
-    const id = req.params.id;
-
-    const conn = await ProviderConnection.findById(id);
-    if (!conn) {
-      res.status(404).json({ ok: false, error: "not found" });
-      return;
-    }
-
-    if (!req.__isAdminOverride) {
-      const accountId = req.account?.accountId;
-      if (!accountId) {
-        res.status(401).json({ ok: false, error: "unauthorized" });
-        return;
-      }
-      if (conn.accountId.toString() !== accountId) {
-        res.status(403).json({ ok: false, error: "forbidden" });
-        return;
-      }
-    }
-
-    try {
-      const encrypted = encryptSecret(token);
-      conn.encryptedToken = encrypted;
-      if (phoneNumberId) {
-        conn.meta = { ...(conn.meta || {}), phoneNumberId };
-      }
-      await conn.save();
-      res.status(200).json({ ok: true, data: { id: conn._id } });
-      return;
-    } catch (err) {
-      res
-        .status(500)
-        .json({ ok: false, error: "failed to encrypt/save token" });
-      return;
-    }
   },
 );
 

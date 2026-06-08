@@ -94,8 +94,18 @@ export default function LinkWizard(props: Props) {
                       const toOpen = preferMobile
                         ? (linkDeepMobile ?? linkDeepWeb)
                         : (linkDeepWeb ?? linkDeepMobile);
-                      if (toOpen) window.open(toOpen, "_blank");
-                      else alert("No deep link available for this provider");
+                      if (!toOpen) {
+                        alert("No deep link available for this provider");
+                        return;
+                      }
+                      // tg:// and similar custom schemes need location.href on
+                      // iOS — window.open with a custom scheme gets blocked.
+                      // https:// links open in a new tab as usual.
+                      if (toOpen.startsWith("http")) {
+                        window.open(toOpen, "_blank");
+                      } else {
+                        window.location.href = toOpen;
+                      }
                     }}
                   >
                     Open in app/web

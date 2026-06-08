@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(mkcert --version)",
+      "Bash(brew install *)",
+      "Bash(mkcert -install)",
+      "Bash(mkcert localhost *)",
+      "Bash(npm uninstall *)"
+    ]
+  }
+}

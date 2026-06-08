@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
-export default function useRealtime(
-  onNewMessage: ((m: any) => void) | null,
-  deps: any[] = [],
-) {
+export default function useRealtime(onNewMessage: ((m: any) => void) | null) {
   const [isRealtime, setIsRealtime] = useState(false);
 
   useEffect(() => {
@@ -30,8 +27,7 @@ export default function useRealtime(
         /* ignore */
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [onNewMessage]);
 
   return { isRealtime };
 }

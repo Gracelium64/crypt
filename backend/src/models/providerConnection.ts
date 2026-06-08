@@ -10,10 +10,7 @@ const providerConnectionSchema = new mongoose.Schema(
     provider: { type: String, enum: ["telegram", "whatsapp"], required: true },
     providerChatId: { type: String, required: true },
     displayName: { type: String },
-    // Optional encrypted token stored for this connection (encrypted with server master key)
-    encryptedToken: { type: String },
-    // Optional metadata stored as mixed
-    meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+    username: { type: String, index: true },
     active: { type: Boolean, default: true },
   },
   { timestamps: true },
