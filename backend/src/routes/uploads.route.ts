@@ -1,13 +1,13 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { uploadBufferToS3 } from "../services/media.service.js";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import formidable from "formidable";
+import fs from "fs/promises";
+import { uploadBufferToCloudinary } from "../services/media.service.js";
 import { env } from "../config/env.js";
 
 export const uploadsRouter = Router();
 
-// Accept a data URL (data:<mime>;base64,<data>) and upload to S3
+// Accept a data URL (data:<mime>;base64,<data>) and upload to Cloudinary
 uploadsRouter.post(
   "/uploads/base64",
   async (req: Request, res: Response): Promise<void> => {
@@ -28,7 +28,7 @@ uploadsRouter.post(
     const buffer = Buffer.from(b64, "base64");
 
     try {
-      const url = await uploadBufferToS3(buffer, contentType);
+      const url = await uploadBufferToCloudinary(buffer, "image", "uploads");
       res.status(201).json({ ok: true, url });
       return;
     } catch (error) {
@@ -41,51 +41,54 @@ uploadsRouter.post(
   },
 );
 
-export default uploadsRouter;
-
-// Presign endpoint for direct browser uploads (PUT)
+// Multipart upload: use Formidable to parse and upload file to Cloudinary
 uploadsRouter.post(
-  "/uploads/presign",
+  "/uploads/formidable",
   async (req: Request, res: Response): Promise<void> => {
-    const filename = req.body?.filename;
-    const contentType = req.body?.contentType ?? "application/octet-stream";
-    const prefix = req.body?.prefix ?? "uploads/";
+    const form = formidable({ multiples: false });
+    form.parse(req, async (err: any, fields: any, files: any) => {
+      if (err) {
+        res.status(400).json({ ok: false, error: err.message });
+        return;
+      }
 
-    if (!filename || typeof filename !== "string") {
-      res.status(400).json({ ok: false, error: "missing filename" });
-      return;
-    }
+      // Expect form field named 'file'
+      const file = (files as any)?.file;
+      if (!file) {
+        res.status(400).json({ ok: false, error: "missing file field" });
+        return;
+      }
 
-    if (!env.S3_BUCKET) {
-      res.status(500).json({ ok: false, error: "S3_BUCKET not configured" });
-      return;
-    }
+      try {
+        const buffer = await fs.readFile(file.filepath ?? file.path);
 
-    // sanitize filename by replacing spaces
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `${prefix}${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+        // Allow client to request a resource type (raw/image) via a form field
+        const resourceType = (fields as any)?.resourceType ?? "image";
+        const isEncryptedFlag =
+          (fields as any)?.encrypted === "1" ||
+          (fields as any)?.encrypted === "true";
 
-    const client = new S3Client({ region: env.AWS_REGION });
-    const cmd = new PutObjectCommand({
-      Bucket: env.S3_BUCKET,
-      Key: key,
-      ContentType: contentType,
-      ACL: "public-read",
-    });
+        const url = await uploadBufferToCloudinary(
+          buffer,
+          resourceType,
+          "uploads",
+        );
 
-    try {
-      const uploadUrl = await getSignedUrl(client, cmd, { expiresIn: 900 });
-      const objectUrl = `https://${env.S3_BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/${key}`;
-      res.status(200).json({ ok: true, uploadUrl, objectUrl, key });
-      return;
-    } catch (error) {
-      res
-        .status(500)
-        .json({
+        // Append a query marker so clients can detect encrypted uploads without server storing metadata
+        const finalUrl = isEncryptedFlag ? `${url}?crypt=1` : url;
+
+        res.status(201).json({ ok: true, url: finalUrl });
+        return;
+      } catch (uploadErr) {
+        res.status(500).json({
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
         });
-      return;
-    }
+        return;
+      }
+    });
   },
 );
+
+export default uploadsRouter;

@@ -1,62 +1,45 @@
-import crypto from "crypto";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 import { env } from "../config/env.js";
 
-const s3Client = () => {
-  const region = env.AWS_REGION ?? "us-east-1";
-  const clientConfig: any = { region };
-  // If explicit credentials are provided, set them (useful for local dev)
-  if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) {
-    clientConfig.credentials = {
-      accessKeyId: env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    };
-  }
-  return new S3Client(clientConfig);
-};
-
-const guessExt = (contentType: string) => {
-  const parts = contentType.split("/");
-  if (parts.length < 2) return "bin";
-  const subtype = parts[1].split(";")[0];
-  // crude mapping for common image types
-  if (subtype.includes("jpeg") || subtype.includes("jpg")) return "jpg";
-  if (subtype.includes("png")) return "png";
-  if (subtype.includes("gif")) return "gif";
-  if (subtype.includes("webp")) return "webp";
-  return subtype || "bin";
-};
-
-export const uploadBufferToS3 = async (
-  buffer: Buffer,
-  contentType: string,
-  prefix = "whatsapp/",
-) => {
-  if (!env.S3_BUCKET) throw new Error("S3_BUCKET not configured");
-
-  const ext = guessExt(contentType || "application/octet-stream");
-  const key = `${prefix}${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
-
-  const client = s3Client();
-  const cmd = new PutObjectCommand({
-    Bucket: env.S3_BUCKET,
-    Key: key,
-    Body: buffer,
-    ContentType: contentType,
-    ACL: "public-read",
+if (
+  env.CLOUDINARY_CLOUD_NAME &&
+  env.CLOUDINARY_API_KEY &&
+  env.CLOUDINARY_API_SECRET
+) {
+  cloudinary.config({
+    cloud_name: env.CLOUDINARY_CLOUD_NAME,
+    api_key: env.CLOUDINARY_API_KEY,
+    api_secret: env.CLOUDINARY_API_SECRET,
   });
+}
 
-  await client.send(cmd);
+export const uploadBufferToCloudinary = async (
+  buffer: Buffer,
+  resourceType: "raw" | "image" | "auto" | "video" = "image",
+  folder = "uploads",
+) => {
+  if (!env.CLOUDINARY_CLOUD_NAME)
+    throw new Error("CLOUDINARY_CLOUD_NAME not configured");
 
-  const region = env.AWS_REGION ?? "us-east-1";
-  const url = `https://${env.S3_BUCKET}.s3.${region}.amazonaws.com/${key}`;
-  return url;
+  return new Promise<string>((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { resource_type: resourceType, folder },
+      (error: any, result: any) => {
+        if (error) return reject(error);
+        if (!result || !result.secure_url)
+          return reject(new Error("upload failed"));
+        resolve(result.secure_url);
+      },
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
 };
 
 export const downloadAndUploadWhatsappMedia = async (mediaId: string) => {
   if (!env.WHATSAPP_ACCESS_TOKEN)
     throw new Error("WHATSAPP_ACCESS_TOKEN not configured");
-  if (!env.S3_BUCKET) throw new Error("S3_BUCKET not configured");
+  if (!env.CLOUDINARY_CLOUD_NAME) throw new Error("CLOUDINARY not configured");
 
   // 1) Get media URL from WhatsApp Graph API
   const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
@@ -81,7 +64,7 @@ export const downloadAndUploadWhatsappMedia = async (mediaId: string) => {
     meta.mime_type ??
     "application/octet-stream";
 
-  // 3) Upload to S3
-  const hostedUrl = await uploadBufferToS3(buffer, contentType);
+  // 3) Upload to Cloudinary
+  const hostedUrl = await uploadBufferToCloudinary(buffer, "image", "whatsapp");
   return hostedUrl;
 };

@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
-import type { MessageDocument } from "../models/message.model.js";
+import type { MessageDocument } from "#models";
 
 let io: Server | null = null;
 
@@ -26,10 +26,8 @@ export const broadcastMessage = (message: MessageDocument) => {
     to: message.to,
     chatId: message.chatId,
     deliveryStatus: message.deliveryStatus,
-    rawText: message.rawText,
     encryptedText: message.encryptedText,
-    decryptedText: message.decryptedText,
-    providerResponse: message.providerResponse,
+    bodyOmitted: Boolean(message.bodyOmitted),
     attachments: message.attachments,
     createdAt: message.createdAt,
   });

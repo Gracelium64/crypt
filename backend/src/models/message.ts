@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export type ProviderName = "telegram" | "whatsapp" | "mock";
+export type ProviderName = "telegram" | "whatsapp";
 export type MessageDirection = "inbound" | "outbound";
 
 const attachmentSchema = new mongoose.Schema(
@@ -15,7 +15,7 @@ const messageSchema = new mongoose.Schema(
   {
     provider: {
       type: String,
-      enum: ["telegram", "whatsapp", "mock"],
+      enum: ["telegram", "whatsapp"],
       required: true,
     },
     direction: { type: String, enum: ["inbound", "outbound"], required: true },
@@ -25,13 +25,12 @@ const messageSchema = new mongoose.Schema(
     providerMessageId: { type: String },
     deliveryStatus: {
       type: String,
-      enum: ["queued", "sent", "mocked", "failed"],
+      enum: ["queued", "sent", "failed"],
       default: "queued",
     },
-    providerResponse: { type: mongoose.Schema.Types.Mixed },
-    rawText: { type: String, default: "" },
+    accountId: { type: mongoose.Schema.Types.ObjectId, ref: "Account", index: true },
     encryptedText: { type: String, default: "" },
-    decryptedText: { type: String, default: "" },
+    bodyOmitted: { type: Boolean, default: false },
     attachments: { type: [attachmentSchema], default: [] },
   },
   { timestamps: true },
@@ -41,4 +40,5 @@ export type MessageDocument = mongoose.InferSchemaType<typeof messageSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const Message = mongoose.model("Message", messageSchema);
+const Message = mongoose.model("Message", messageSchema);
+export default Message;
