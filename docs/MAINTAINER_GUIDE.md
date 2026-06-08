@@ -26,11 +26,12 @@ Create `backend/.env` from `backend/.env.example`:
 
 - `GET /health`: service health
 - `GET /api/messages`: message query (supports `provider`, `chatId`, `since`, `limit`)
+- `GET /api/conversations`: provider inbox summaries, secure/plain counts, and latest message previews
 - `POST /api/messages/send`: creates outbound event and emits realtime update
-- `POST /api/messages/mock-inbound`: creates inbound event for demo simulation
 - `POST /api/providers/telegram/webhook`: Telegram inbound webhook
 - `GET /api/providers/whatsapp/webhook`: WhatsApp verification endpoint
 - `POST /api/providers/whatsapp/webhook`: WhatsApp inbound webhook
+- `GET /api/providers/status`: provider readiness, setup notes, and browser web-client links
 
 ## Operational Checklist
 
@@ -38,7 +39,8 @@ Create `backend/.env` from `backend/.env.example`:
 2. Confirm backend `CORS_ORIGIN` matches frontend host.
 3. Confirm frontend points to backend through `VITE_API_BASE_URL`.
 4. Validate websocket connection status in UI before demo.
-5. If websocket drops, confirm polling fallback still updates timeline.
+5. If websocket drops, confirm polling fallback still updates the inbox and timeline.
+6. For the operator flow, open Telegram Web or WhatsApp Web in a separate tab before using the inbox.
 
 ## Webhook registration (Telegram)
 
@@ -76,53 +78,111 @@ curl -X POST https://abc123.ngrok.io/api/admin/telegram/set-webhook \
 
 4. If you configured `TELEGRAM_WEBHOOK_SECRET`, incoming Telegram webhooks will include the header `X-Telegram-Bot-Api-Secret-Token` and the backend will validate it.
 
-## Media hosting (WhatsApp -> S3)
+Hosted linking flow
 
-For WhatsApp inbound media, the backend can download media via the Graph API and upload it to an S3 bucket so the frontend can display hosted images.
+- The app supports a hosted linking flow so end users never paste tokens. Operators should run a hosted Telegram bot and WhatsApp phone number using the credentials configured in the backend env. Users then link their provider session by generating a short `LINK <code>` inside the web UI and sending that code to the hosted bot/number. The webhook listener will detect the `LINK <code>` message and bind the provider chat to the user's account.
+- Operator responsibilities:
+  - Provide and configure `TELEGRAM_BOT_TOKEN` and `WHATSAPP_ACCESS_TOKEN` in the backend env.
+  - Ensure webhooks point to `/api/providers/telegram/webhook` and `/api/providers/whatsapp/webhook`.
+  - Use the admin endpoints `POST /api/admin/telegram/set-webhook` and `POST /api/admin/providers/test` to register webhooks and validate sending.
+
+## Media hosting (Cloudinary + Formidable)
+
+For inbound media (WhatsApp) and client uploads, the backend downloads or receives files and uploads them to Cloudinary for stable public URLs.
 
 Required environment variables (backend):
 
-- `AWS_ACCESS_KEY_ID` (optional if using instance profile)
-- `AWS_SECRET_ACCESS_KEY` (optional)
-- `AWS_REGION` (default: `us-east-1`)
-- `S3_BUCKET` (name of bucket used to host media)
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
 
 Notes:
 
-- The S3 bucket should allow object uploads from the service account and either be public-read for demo simplicity or use signed URLs for access control.
-- Configure these secrets in Render under the service environment variables when deploying.
-
-When running locally, set these variables in `backend/.env` and ensure the AWS credentials have permissions to `s3:PutObject` on the target bucket.
+- The backend exposes a multipart upload endpoint `POST /api/uploads/formidable` which accepts a `file` form field and uploads the file to Cloudinary.
+- A base64 fallback remains available: `POST /api/uploads/base64` accepts `dataUrl` and uploads to Cloudinary.
+- Configure Cloudinary credentials in Render under the service environment variables when deploying.
 
 Client uploads (dev):
 
-- A simple helper endpoint is available for demos: `POST /api/uploads/base64` accepts a JSON body with `dataUrl` (data:<mime>;base64,<data>) and returns a hosted `url` after uploading to S3. Use this for quick frontend prototyping without implementing multipart upload.
-- For better UX and scale, the backend also exposes a presign endpoint: `POST /api/uploads/presign` which returns a signed `uploadUrl` (PUT) and the final `objectUrl`. The frontend can PUT directly to S3 using the signed URL and avoid proxying bytes through the backend.
-
-S3 CORS example (set on the bucket to allow browser PUTs and GETs):
-
-```json
-[
-  {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
-    "AllowedOrigins": [
-      "http://localhost:5173",
-      "https://your-frontend.example.com"
-    ],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
-```
-
-Note: replace `AllowedOrigins` with your frontend origin(s). For production, prefer private buckets with signed access rather than `public-read` ACLs.
+- Use the multipart endpoint `POST /api/uploads/formidable` with a `file` form field for direct browser uploads (FormData).
+- For privacy or large uploads you may prefer client-side encryption before uploading.
 
 ## Deployment notes (Render)
 
 - Render is a good choice for hosting both backend and static frontend. Set the `VITE_API_BASE_URL` in the frontend service environment to point to your backend URL.
-- Add the AWS env vars and `S3_BUCKET` to the backend's environment in Render.
+- Add the Cloudinary env vars (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) to the backend's environment in Render.
 - Ensure that the backend `PORT` is set via Render's service settings (Render sets `PORT` automatically for web services). Use `process.env.PORT` as available.
+
+## Required environment variables (quick reference)
+
+Use `backend/.env.example` as a starting point. At minimum, set these before deploying or running in development:
+
+- `MONGODB_URI` — MongoDB connection string (production should use a managed DB)
+- `CORS_ORIGIN` — frontend origin (e.g., `https://your-frontend.example.com`)
+- `DEMO_ENCRYPTION_KEY` — (development demo only) 32+ char secret used by server AES helpers
+- `WHATSAPP_VERIFY_TOKEN` — token for WhatsApp webhook verification
+- `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional for Telegram flows)
+- `TELEGRAM_WEBHOOK_SECRET` — secret to validate Telegram webhook callbacks (optional)
+- `WHATSAPP_ACCESS_TOKEN` — WhatsApp Cloud API access token
+- `WHATSAPP_PHONE_NUMBER_ID` — WhatsApp phone number ID for API calls
+- `WEBHOOK_ADMIN_TOKEN` — short admin secret to protect webhook admin endpoints
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — Cloudinary credentials for media hosting
+
+For development, copy `backend/.env.example` to `backend/.env` and fill values. Keep private keys and tokens out of source control.
+
+## Running locally
+
+Backend (development):
+
+```bash
+cd backend
+cp .env.example .env  # edit .env
+npm install
+npm run dev
+```
+
+Backend (production build):
+
+```bash
+cd backend
+npm install --production
+npm run build
+npm start
+```
+
+Frontend (development):
+
+```bash
+cd frontendReactJs
+cp .env.example .env # set VITE_API_BASE_URL if needed
+npm install
+npm run dev
+```
+
+Frontend (production build for static hosting):
+
+```bash
+cd frontendReactJs
+npm install
+npm run build
+# deploy the `dist` folder (see Render instructions below)
+```
+
+## Deploying to Render (example)
+
+- Backend: create a new Web Service using the `backend` folder as the deploy path.
+  - Build command: `npm run build`
+  - Start command: `npm start`
+  - Environment: add all required env vars from the reference above.
+
+- Frontend: create a new Static Site (or Web Service) using the `frontendReactJs` folder.
+  - Build command: `npm run build`
+  - Publish directory: `frontendReactJs/dist`
+  - Environment: set `VITE_API_BASE_URL` to your deployed backend URL (e.g. `https://your-backend.onrender.com`)
+
+After deploying, register Telegram/WhatsApp webhooks (see above) using your backend public URL.
+
+If you prefer a single server deployment, the frontend build can be served from the backend; however this repo expects separate frontend/static hosting and a backend API service.
 
 ## Troubleshooting
 
@@ -140,3 +200,4 @@ Note: replace `AllowedOrigins` with your frontend origin(s). For production, pre
 - Replace placeholder provider outbound behavior in `messages.route.ts` with actual API calls.
 - Add attachment upload flow (cloud storage + signed URLs) instead of URL-only image attachments.
 - Add auth middleware and chat ownership checks before enabling multi-user access.
+- Add richer inbox grouping if you want separate secure/standard folders per provider.

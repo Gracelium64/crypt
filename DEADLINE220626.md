@@ -1,85 +1,87 @@
-# Go-Live Guide & Estimate — crypt 
+# Project Status — DEADLINE220626
 
-## Estimated Time to Go Live (with 30% buffer)
-
-- **Base estimate:** 6-8 hours (focused, experienced dev)
-- **With 30% buffer:** 8-10.5 hours
-- **Includes:**
-  - Credential setup (Telegram, WhatsApp, AWS S3)
-  - Webhook registration
-  - Render deployment
-  - Live verification
-  - Full code/database review and refactor (learning pace)
-  - Bug fixes and troubleshooting
+Last updated: 2026-06-08
 
 ---
 
-## Step-by-Step Go-Live Guide
+## Completed
 
-### 1. Prepare Credentials
+### Core infrastructure
+- Express + MongoDB (Atlas, `crypt` database) backend
+- React + Vite frontend, mobile-first
+- JWT authentication (register / login / logout)
+- Socket.IO real-time message broadcasting
+- Cloudinary media hosting (image attachments)
 
-- [ ] Telegram Bot Token (from @BotFather)
-- [ ] Telegram Webhook Secret (optional, for extra security)
-- [ ] WhatsApp Graph API Access Token (from Facebook Developer Console)
-- [ ] WhatsApp Phone Number ID
-- [ ] AWS S3 Bucket Name
-- [ ] AWS Access Key ID & Secret Access Key
-- [ ] AWS Region (e.g., us-east-1)
+### Encryption
+- ECDH P-256 + AES-GCM E2E encryption via `crypto.subtle`
+- Auto keypair generation on login (silent, no manual step)
+- Key stored in `localStorage`, public key registered to server
+- Key patched in-place on re-login to fix `key_ops` compatibility (iOS/Android)
+- Re-decrypt effect handles race condition when messages load before key is ready
+- Key mirrored from email to Telegram user ID on MTProto connect
 
-### 2. Configure Environment Variables
+### Telegram
+- Telegram Bot (CryptBot) for webhook-based message delivery
+- Telegram MTProto via gramjs (`telegram@2.26.22`) for direct user-to-user messaging
+- Phone auth flow: request code → verify code → optional 2FA
+- Auto ProviderConnection creation from MTProto identity (no separate bot-link step)
+- Session persistence across backend restarts (`TelegramSession` model)
+- Fan-out: outbound messages create inbound copy for recipient so both parties see the message in Crypt
+- Process-level crash guards for gramjs errors
 
-- Copy `.env.example` to `.env` (if not already present)
-- Fill in all required values:
-  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`
-  - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
-  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`
-  - `MONGODB_URI` (your MongoDB connection string)
-  - `FRONTEND_URL`, `BACKEND_URL` (for CORS)
+### User flow (current, simplified)
+1. Sign up / sign in
+2. Settings → Connect Telegram → enter phone → enter code from Telegram app
+3. Done — conversations visible in Chats tab, messages E2E encrypted
 
-### 3. Set Up AWS S3
-
-- Create a new S3 bucket (if needed)
-- Set CORS policy (see docs/MAINTAINER_GUIDE.md)
-- Set IAM user permissions for programmatic access
-
-### 4. Register Telegram Webhook
-
-- Run the CLI script: `npm run telegram:set-webhook`
-- Provide your public backend URL and webhook secret
-- Confirm webhook is set via Telegram API
-
-### 5. Register WhatsApp Webhook
-
-- In Facebook Developer Console, set webhook URL to your backend endpoint
-- Subscribe to message and media events
-- Confirm webhook is receiving events
-
-### 6. Deploy to Render (or other host)
-
-- Push code to your repo
-- Create new Render services for backend and frontend
-- Set all environment variables in Render dashboard
-- Deploy and monitor logs for errors
-
-### 7. Live Verification
-
-- Send test messages from Telegram and WhatsApp
-- Upload images from frontend, confirm S3 upload and media delivery
-- Check MongoDB for message records
-- Confirm real-time and polling updates in frontend
-
-### 8. (Optional) Refactor Database/Code
-
-- Review all models and code for your preferred style
-- Make schema or code changes as desired
-- Re-run build and tests after changes
-
-### 9. Troubleshooting
-
-- Check logs for errors (backend, frontend, Render)
-- Use simulation endpoints for debugging
-- Refer to docs/MAINTAINER_GUIDE.md and README.md for common issues
+### UI
+- Mobile-first shell with Chats / Find / Settings tabs
+- Auto-scroll to bottom on new message
+- Toast notifications (dismissible, togglable)
+- Connected status chip + disconnect button in Settings
+- Security & Keys section (auto-managed, visible for advanced users)
+- Conversation list with security state badge
 
 ---
 
-**Ready to proceed? Approve to start step-by-step guidance.**
+## Remaining
+
+### WhatsApp (blocked on credentials)
+- `whatsapp-web.js` or `@whiskeysockets/baileys` integration for direct messaging
+- Equivalent MTProto-style phone auth flow for WhatsApp
+- Fan-out and ProviderConnection auto-creation (same pattern as Telegram)
+- **Blocked:** waiting for WhatsApp Business API credentials
+
+### Offline key recovery (identified, not started)
+- See `CLAUDE_HANDOFF_OFFLINE.md`
+- Private key lost when localStorage is cleared → old messages unreadable after re-link
+- Recommended fix: server-side encrypted key backup (PBKDF2 + AES-GCM, password-derived)
+
+### Production deployment
+- See `PRODUCTION_CHECKLIST.md`
+- Not yet deployed to Render
+
+### Minor / polish
+- CI workflow (`ci.yml`) was removed during refactor — restore if needed
+- WhatsApp provider status shows "Needs setup" (expected until credentials added)
+- `KeyManager` component visible in Settings — can be collapsed into an Advanced section once key backup is implemented and users no longer need to think about keys
+
+---
+
+## Not Required (descoped)
+- Separate "Link Provider" bot-link step — replaced by MTProto direct connect
+- Manual key generation / registration UI (auto-handled on login)
+- `TelegramDirectSetup` component — replaced by `ConnectTelegram`
+
+---
+
+## Time Estimate for Remaining Work
+
+| Item | Estimate |
+|------|----------|
+| WhatsApp integration (after credentials) | 4–8 hours |
+| Offline key backup | 3–5 hours |
+| Production deployment (Render) | 1–2 hours |
+| Testing + polish | 2–4 hours |
+| **Total with 30% buffer** | **13–25 hours** |

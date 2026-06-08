@@ -15,16 +15,42 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "imports": {
+    "#db": {
+      "development": "./src/db/index.ts",
+      "default": "./dist/db/index.js"
+    },
+    "#models": {
+      "development": "./src/models/index.ts",
+      "default": "./dist/models/index.js"
+    },
+    "#services": {
+      "development": "./src/services/index.ts",
+      "default": "./dist/services/index.js"
+    },
+    "#routes": {
+      "development": "./src/routes/index.ts",
+      "default": "./dist/routes/index.js"
+    },
+    "#config": {
+      "development": "./src/config/index.ts",
+      "default": "./dist/config/index.js"
+    }
+  },
   "dependencies": {
+    "bcryptjs": "2.4.3",
+    "cloudinary": "1.33.0",
     "cors": "2.8.6",
     "dotenv": "17.4.2",
     "express": "5.2.1",
+    "formidable": "3.5.2",
+    "jsonwebtoken": "9.0.0",
+    "mime-types": "2.1.35",
     "mongoose": "9.6.3",
     "socket.io": "4.8.3",
-    "zod": "4.4.3",
-    "@aws-sdk/client-s3": "3.1056.0",
-    "mime-types": "2.1.35",
-    "@aws-sdk/s3-request-presigner": "3.1056.0"
+    "streamifier": "0.1.1",
+    "telegram": "2.26.22",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",

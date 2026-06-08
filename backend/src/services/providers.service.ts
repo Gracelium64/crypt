@@ -1,5 +1,5 @@
 import { env } from "../config/env.js";
-import type { ProviderName } from "../models/message.model.js";
+import type { ProviderName } from "#models";
 
 type SendPayload = {
   provider: ProviderName;
@@ -11,20 +11,29 @@ type SendPayload = {
 
 type SendResult = {
   providerMessageId?: string;
-  deliveryStatus: "sent" | "mocked" | "failed";
+  deliveryStatus: "sent" | "failed";
   providerResponse?: unknown;
   error?: string;
 };
 
-const sendTelegram = async (payload: SendPayload): Promise<SendResult> => {
-  if (!env.TELEGRAM_BOT_TOKEN) {
+type SendOpts = {
+  tokenOverride?: string;
+  phoneNumberIdOverride?: string;
+};
+
+const sendTelegram = async (
+  payload: SendPayload,
+  opts?: SendOpts,
+): Promise<SendResult> => {
+  const token = opts?.tokenOverride ?? env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
     return {
-      deliveryStatus: "mocked",
-      error: "TELEGRAM_BOT_TOKEN missing; send simulated",
+      deliveryStatus: "failed",
+      error: "TELEGRAM_BOT_TOKEN not configured",
     };
   }
 
-  const endpointBase = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}`;
+  const endpointBase = `https://api.telegram.org/bot${token}`;
 
   try {
     let response: Response;
@@ -76,15 +85,21 @@ const sendTelegram = async (payload: SendPayload): Promise<SendResult> => {
   }
 };
 
-const sendWhatsApp = async (payload: SendPayload): Promise<SendResult> => {
-  if (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
+const sendWhatsApp = async (
+  payload: SendPayload,
+  opts?: SendOpts,
+): Promise<SendResult> => {
+  const token = opts?.tokenOverride ?? env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId =
+    opts?.phoneNumberIdOverride ?? env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneNumberId) {
     return {
-      deliveryStatus: "mocked",
-      error: "WhatsApp credentials missing; send simulated",
+      deliveryStatus: "failed",
+      error: "WhatsApp credentials not configured",
     };
   }
 
-  const endpoint = `https://graph.facebook.com/v20.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const endpoint = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
 
   const body = payload.attachments.length
     ? {
@@ -143,17 +158,18 @@ const sendWhatsApp = async (payload: SendPayload): Promise<SendResult> => {
 
 export const sendToProvider = async (
   payload: SendPayload,
+  opts?: SendOpts,
 ): Promise<SendResult> => {
   if (payload.provider === "telegram") {
-    return sendTelegram(payload);
+    return sendTelegram(payload, opts);
   }
 
   if (payload.provider === "whatsapp") {
-    return sendWhatsApp(payload);
+    return sendWhatsApp(payload, opts);
   }
 
   return {
-    deliveryStatus: "mocked",
-    error: "Mock provider selected",
+    deliveryStatus: "failed",
+    error: "Unknown provider",
   };
 };
