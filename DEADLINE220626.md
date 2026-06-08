@@ -1,80 +1,87 @@
-# Remaining External Tasks & Timeline (DEADLINE220626)
+# Project Status — DEADLINE220626
 
-This file lists tasks that require operator / external intervention (credentials, webhooks, devices) and provides conservative time estimates including a 30% buffer for troubleshooting and errors.
+Last updated: 2026-06-08
 
-NOTE: I will not modify your live environment or commit changes — these steps require you to provide secrets or perform provider-side actions.
+---
 
-1. Provide provider credentials and secrets (required)
-   - `TELEGRAM_BOT_TOKEN` (and optionally `TELEGRAM_BOT_USERNAME`) — used for Telegram outbound sends and webhook configuration.
-   - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_NUMBER` — used for WhatsApp Cloud API sends and deep links.
-   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — optional but required for production media hosting.
-   - `WEBHOOK_ADMIN_TOKEN` — admin secret for completing LINK codes programmatically.
-   - `SE_CRETS_MASTER_KEY` or `DEMO_ENCRYPTION_KEY` — master key for server-side secret encryption (DEMO key exists but rotate for production).
+## Completed
 
-Estimated operator time: 15–45 minutes to gather credentials and copy them into `backend/.env` or your host environment.
+### Core infrastructure
+- Express + MongoDB (Atlas, `crypt` database) backend
+- React + Vite frontend, mobile-first
+- JWT authentication (register / login / logout)
+- Socket.IO real-time message broadcasting
+- Cloudinary media hosting (image attachments)
 
-# Remaining External Tasks & Timeline (DEADLINE220626)
+### Encryption
+- ECDH P-256 + AES-GCM E2E encryption via `crypto.subtle`
+- Auto keypair generation on login (silent, no manual step)
+- Key stored in `localStorage`, public key registered to server
+- Key patched in-place on re-login to fix `key_ops` compatibility (iOS/Android)
+- Re-decrypt effect handles race condition when messages load before key is ready
+- Key mirrored from email to Telegram user ID on MTProto connect
 
-This document now reflects work completed by the developer and the remaining tasks that require operator action. It includes conservative time estimates with a 30% buffer for troubleshooting.
+### Telegram
+- Telegram Bot (CryptBot) for webhook-based message delivery
+- Telegram MTProto via gramjs (`telegram@2.26.22`) for direct user-to-user messaging
+- Phone auth flow: request code → verify code → optional 2FA
+- Auto ProviderConnection creation from MTProto identity (no separate bot-link step)
+- Session persistence across backend restarts (`TelegramSession` model)
+- Fan-out: outbound messages create inbound copy for recipient so both parties see the message in Crypt
+- Process-level crash guards for gramjs errors
 
-NOTE: I will not modify your live environment or commit secrets — the operator must provide credentials or perform provider-side actions.
+### User flow (current, simplified)
+1. Sign up / sign in
+2. Settings → Connect Telegram → enter phone → enter code from Telegram app
+3. Done — conversations visible in Chats tab, messages E2E encrypted
 
-Developer work completed (no action required from you):
+### UI
+- Mobile-first shell with Chats / Find / Settings tabs
+- Auto-scroll to bottom on new message
+- Toast notifications (dismissible, togglable)
+- Connected status chip + disconnect button in Settings
+- Security & Keys section (auto-managed, visible for advanced users)
+- Conversation list with security state badge
 
-- Swagger UI and minimal OpenAPI spec added (`/api/docs`, `/api/openapi.json`).
-- Centralized network helpers (`frontendReactJs/src/lib/api.ts`).
-- Client WebCrypto helpers centralized (`frontendReactJs/src/lib/crypto.ts`).
-- `sendMessage` logic extracted to `frontendReactJs/src/services/messages.ts`.
-- Basic E2E unit test for crypto added (`frontendReactJs/src/lib/crypto.test.ts`).
-- CI workflow added to build backend & frontend and run frontend tests (`.github/workflows/ci.yml`).
+---
 
-Remaining operator tasks (requires your help)
+## Remaining
 
-1. Provide provider credentials and secrets (required)
-   - `TELEGRAM_BOT_TOKEN` (and optionally `TELEGRAM_BOT_USERNAME`)
-   - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_NUMBER`
-   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (optional for media hosting)
-   - `WEBHOOK_ADMIN_TOKEN` (admin secret used for link completion / testing)
-   - `SE_CRETS_MASTER_KEY` or `DEMO_ENCRYPTION_KEY` (master key for server-side encrypted provider tokens)
+### WhatsApp (blocked on credentials)
+- `whatsapp-web.js` or `@whiskeysockets/baileys` integration for direct messaging
+- Equivalent MTProto-style phone auth flow for WhatsApp
+- Fan-out and ProviderConnection auto-creation (same pattern as Telegram)
+- **Blocked:** waiting for WhatsApp Business API credentials
 
-Estimated operator time: 15–45 minutes to gather credentials and add them to `backend/.env` or your host environment.
+### Offline key recovery (identified, not started)
+- See `CLAUDE_HANDOFF_OFFLINE.md`
+- Private key lost when localStorage is cleared → old messages unreadable after re-link
+- Recommended fix: server-side encrypted key backup (PBKDF2 + AES-GCM, password-derived)
 
-2. Provide test targets / device readiness
-   - One or more provider-side test accounts or chat IDs (Telegram chat ID/username, WhatsApp test number in E.164).
-   - Optionally provide a public webhook URL (or run an `ngrok` tunnel) so the backend can receive provider webhooks.
+### Production deployment
+- See `PRODUCTION_CHECKLIST.md`
+- Not yet deployed to Render
 
-Estimated operator time: 10–30 minutes to collect test IDs and start ngrok (if needed).
+### Minor / polish
+- CI workflow (`ci.yml`) was removed during refactor — restore if needed
+- WhatsApp provider status shows "Needs setup" (expected until credentials added)
+- `KeyManager` component visible in Settings — can be collapsed into an Advanced section once key backup is implemented and users no longer need to think about keys
 
-3. Webhook registration / provider console actions
-   - Configure Telegram webhook to point at `https://<public-host>/api/providers/telegram/webhook` (set webhook secret if used).
-   - Configure WhatsApp webhook to point at `https://<public-host>/api/providers/whatsapp/webhook` and subscribe to message/media events.
+---
 
-Estimated operator time: 15–60 minutes (depends on provider console familiarity).
+## Not Required (descoped)
+- Separate "Link Provider" bot-link step — replaced by MTProto direct connect
+- Manual key generation / registration UI (auto-handled on login)
+- `TelegramDirectSetup` component — replaced by `ConnectTelegram`
 
-What I will do after you provide the above
+---
 
-- Configure the backend locally (no git commits) with your credentials.
-- Run the smoke-test script and complete link flows (admin token required for programmatic completion if you prefer automation).
-- Validate send/receive flows and attachments; fix adapter issues if provider APIs require header/auth tweaks.
+## Time Estimate for Remaining Work
 
-Developer work remaining (I can run these without your input)
-
-- Verify provider flows and finalize adapter tweaks (requires credentials) — performed after you provide secrets.
-
-Conservative time estimate to finish end-to-end verification (developer + operator)
-
-- Operator prep (provide credentials, start ngrok): 0.25–1.0 hours
-- Developer verification & fixes (after creds): 2.0–4.0 hours (base)
-
-Applying a 30% troubleshooting buffer increases the developer window to ~2.6–5.2 hours and the overall operator+developer window to roughly 3–6 hours.
-
-Recommended planning: allocate one working day (8 hours) to allow for unexpected provider issues, deployment, and final verification.
-
-Quick checklist you can act on now
-
-- [ ] Collect and paste credentials into a local `backend/.env` (do not commit)
-- [ ] Provide one test chat ID / phone number for Telegram or WhatsApp
-- [ ] Provide a public webhook URL or run `ngrok http 4000` and share the forwarding URL
-- [ ] Share `WEBHOOK_ADMIN_TOKEN` if you want programmatic link completion during verification
-
-If you provide credentials and a public URL, I will run the verification steps and report results (no commits will be made). Otherwise I can provide a ready-to-run checklist with exact commands for you to execute locally.
+| Item | Estimate |
+|------|----------|
+| WhatsApp integration (after credentials) | 4–8 hours |
+| Offline key backup | 3–5 hours |
+| Production deployment (Render) | 1–2 hours |
+| Testing + polish | 2–4 hours |
+| **Total with 30% buffer** | **13–25 hours** |
