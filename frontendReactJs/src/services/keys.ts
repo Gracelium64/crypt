@@ -8,16 +8,17 @@ export const generateKeypair = async (localOwnerId: string) => {
   const kp = await crypto.subtle.generateKey(
     { name: "ECDH", namedCurve: "P-256" },
     true,
-    ["deriveKey"],
+    ["deriveKey", "deriveBits"],
   );
 
   const pubRaw = await crypto.subtle.exportKey("raw", kp.publicKey);
   const pubB64 = arrayBufferToBase64(pubRaw);
   const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
 
-  // persist private key locally
+  // persist keys locally
   try {
     localStorage.setItem(`crypt:priv:${localOwnerId}`, JSON.stringify(privJwk));
+    localStorage.setItem(`crypt:pub:${localOwnerId}`, pubB64);
   } catch {
     // ignore localStorage failures
   }

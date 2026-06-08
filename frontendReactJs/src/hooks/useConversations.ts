@@ -3,7 +3,7 @@ import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
 
-export default function useConversations() {
+export default function useConversations(token?: string | null) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [lastSync, setLastSync] = useState<string>("");
@@ -12,6 +12,8 @@ export default function useConversations() {
     try {
       const resp = await apiFetch(
         `/conversations?provider=${currentProvider}&limit=200`,
+        {},
+        token,
       );
       if (!resp.ok) throw new Error("Could not load conversations");
       const payload = await resp.json();
@@ -19,7 +21,7 @@ export default function useConversations() {
     } catch (_err) {
       console.error("loadConversations error", _err);
     }
-  }, []);
+  }, [token]);
 
   const loadMessages = useCallback(
     async (
@@ -43,7 +45,7 @@ export default function useConversations() {
         });
         if (since) params.set("since", since);
 
-        const resp = await apiFetch(`/messages?${params.toString()}`);
+        const resp = await apiFetch(`/messages?${params.toString()}`, {}, token);
         if (!resp.ok) throw new Error("Could not load messages");
         const payload = await resp.json();
         const incoming = (payload.data ?? []) as ChatMessage[];
@@ -88,7 +90,7 @@ export default function useConversations() {
         console.error("loadMessages error", _err);
       }
     },
-    [],
+    [token],
   );
 
   const handleIncomingMessage = useCallback(

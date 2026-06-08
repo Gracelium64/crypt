@@ -13,8 +13,10 @@ import {
   linkRouter,
   providerConnectionsRouter,
   swaggerRouter,
+  telegramRouter,
 } from "#routes";
 import { initRealtime } from "#services/realtime.service.js";
+import { loadAllMTProtoSessions } from "#services/telegram-mtproto.service.js";
 
 const app = express();
 
@@ -51,6 +53,16 @@ app.use("/api", keysRouter);
 app.use("/api", linkRouter);
 app.use("/api", providerConnectionsRouter);
 app.use("/api", swaggerRouter);
+app.use("/api", telegramRouter);
+
+// Prevent gramjs (and any other async library) from crashing the process on
+// unexpected errors — log and continue instead.
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
 
 const bootstrap = async () => {
   // db index ensures connectToDatabase is exported; call it explicitly
@@ -64,6 +76,11 @@ const bootstrap = async () => {
   server.listen(env.PORT, "0.0.0.0", () => {
     console.log(`Backend listening on http://0.0.0.0:${env.PORT}`);
   });
+
+  // Restore any previously authenticated MTProto sessions
+  loadAllMTProtoSessions().catch((err) =>
+    console.error("MTProto session restore failed:", err),
+  );
 };
 
 bootstrap().catch((error) => {

@@ -9,3 +9,11 @@ export {
   decryptMarkedText,
   isMarkedCiphertext,
 } from "./crypto.service.js";
+export {
+  loadAllMTProtoSessions,
+  hasActiveClient,
+  requestPhoneCode,
+  verifyPhoneCode,
+  sendViaMTProto,
+  disconnectMTProtoSession,
+} from "./telegram-mtproto.service.js";

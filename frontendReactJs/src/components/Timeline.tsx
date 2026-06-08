@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { useEffect, useRef } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext } from "../lib/crypto";
 import type { ChatMessage } from "../types";
@@ -18,8 +19,13 @@ const Timeline: FC<Props> = ({
   privJwk,
   localOwnerId,
   deriveAesGcmKey,
-  // apiBase not needed; use apiFetch helper
 }) => {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
     <>
       {messages.length === 0 ? (
@@ -169,6 +175,7 @@ const Timeline: FC<Props> = ({
           );
         })
       )}
+      <div ref={bottomRef} />
     </>
   );
 };

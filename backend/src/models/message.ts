@@ -28,9 +28,8 @@ const messageSchema = new mongoose.Schema(
       enum: ["queued", "sent", "failed"],
       default: "queued",
     },
-    // Store ciphertext only. Plaintext is intentionally not persisted for E2E.
+    accountId: { type: mongoose.Schema.Types.ObjectId, ref: "Account", index: true },
     encryptedText: { type: String, default: "" },
-    // If inbound plaintext was omitted for privacy, mark it here.
     bodyOmitted: { type: Boolean, default: false },
     attachments: { type: [attachmentSchema], default: [] },
   },

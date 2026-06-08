@@ -6,7 +6,6 @@ import { requireAuth } from "./auth.route.js";
 const keysRouter = Router();
 
 const registerSchema = z.object({
-  ownerId: z.string().min(1),
   publicKey: z.string().min(1),
 });
 
@@ -28,7 +27,7 @@ keysRouter.post("/keys/register", requireAuth, async (req: any, res) => {
     const record = await Key.findOneAndUpdate(
       { ownerId },
       { publicKey },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
     // Mirror this public key to any provider connections owned by this account
     try {
@@ -40,7 +39,7 @@ keysRouter.post("/keys/register", requireAuth, async (req: any, res) => {
             await Key.findOneAndUpdate(
               { ownerId: c.providerChatId },
               { publicKey },
-              { upsert: true, new: true, setDefaultsOnInsert: true },
+              { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
             );
           }
         }

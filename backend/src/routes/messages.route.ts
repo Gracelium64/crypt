@@ -3,6 +3,8 @@ import { z } from "zod";
 import { Message, ProviderConnection } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
+import { sendToProvider } from "../services/index.js";
+import { hasActiveClient, sendViaMTProto } from "../services/telegram-mtproto.service.js";
 import { requireAuth } from "./auth.route.js";
 
 const sendSchema = z.object({
@@ -40,6 +42,7 @@ type ConversationSummary = {
   provider: "telegram" | "whatsapp";
   chatId: string;
   counterpart: string;
+  counterpartName: string;
   messageCount: number;
   secureMessageCount: number;
   plainMessageCount: number;
@@ -54,9 +57,11 @@ const previewMessage = (message: {
   bodyOmitted?: boolean | null;
 }) => {
   if (message.bodyOmitted) return "(content omitted for privacy)";
-  const candidate = message.encryptedText?.trim() || "(empty)";
-  if (candidate.length <= 96) return candidate;
-  return `${candidate.slice(0, 93)}...`;
+  const text = message.encryptedText?.trim() || "";
+  if (!text) return "(empty)";
+  if (isMarkedCiphertext(text)) return "[Encrypted message]";
+  if (text.length <= 96) return text;
+  return `${text.slice(0, 93)}...`;
 };
 
 const isSecureMessage = (message: { encryptedText?: string | null }) =>
@@ -64,7 +69,7 @@ const isSecureMessage = (message: { encryptedText?: string | null }) =>
 
 export const messagesRouter = Router();
 
-messagesRouter.get("/messages", async (req, res) => {
+messagesRouter.get("/messages", requireAuth, async (req: any, res) => {
   const parsed = querySchema.safeParse(req.query);
 
   if (!parsed.success) {
@@ -73,7 +78,8 @@ messagesRouter.get("/messages", async (req, res) => {
   }
 
   const { since, provider, chatId, limit } = parsed.data;
-  const query: Record<string, unknown> = {};
+  const accountId = req.account?.accountId;
+  const query: Record<string, unknown> = { accountId };
 
   if (provider) query.provider = provider;
   if (chatId) query.chatId = chatId;
@@ -88,7 +94,7 @@ messagesRouter.get("/messages", async (req, res) => {
   return;
 });
 
-messagesRouter.get("/conversations", async (req, res) => {
+messagesRouter.get("/conversations", requireAuth, async (req: any, res) => {
   const parsed = conversationQuerySchema.safeParse(req.query);
 
   if (!parsed.success) {
@@ -97,7 +103,8 @@ messagesRouter.get("/conversations", async (req, res) => {
   }
 
   const { provider, limit } = parsed.data;
-  const query: Record<string, unknown> = {};
+  const accountId = req.account?.accountId;
+  const query: Record<string, unknown> = { accountId };
 
   if (provider) {
     query.provider = provider;
@@ -117,11 +124,12 @@ messagesRouter.get("/conversations", async (req, res) => {
 
     const existing = conversations.get(key);
     if (!existing) {
+      const rawCounterpart = message.direction === "inbound" ? message.from : message.to;
       conversations.set(key, {
         provider: message.provider,
         chatId: message.chatId,
-        counterpart:
-          message.direction === "inbound" ? message.from : message.to,
+        counterpart: rawCounterpart,
+        counterpartName: rawCounterpart,
         messageCount: 1,
         secureMessageCount: secure ? 1 : 0,
         plainMessageCount: secure ? 0 : 1,
@@ -142,6 +150,29 @@ messagesRouter.get("/conversations", async (req, res) => {
         : secure
           ? "secure"
           : "plain";
+  }
+
+  // Enrich counterpart with display names from ProviderConnection
+  const byProvider = new Map<string, Set<string>>();
+  for (const conv of conversations.values()) {
+    const s = byProvider.get(conv.provider) ?? new Set<string>();
+    s.add(conv.counterpart);
+    byProvider.set(conv.provider, s);
+  }
+  const nameMap = new Map<string, string>();
+  for (const [prov, chatIds] of byProvider) {
+    const conns = await ProviderConnection.find({
+      provider: prov as any,
+      providerChatId: { $in: [...chatIds] },
+    }).lean();
+    for (const c of conns) {
+      const name = c.displayName ?? c.username ?? null;
+      if (name) nameMap.set(`${prov}:${c.providerChatId}`, name);
+    }
+  }
+  for (const conv of conversations.values()) {
+    const name = nameMap.get(`${conv.provider}:${conv.counterpart}`);
+    if (name) conv.counterpartName = name;
   }
 
   const data = Array.from(conversations.values()).sort((left, right) =>
@@ -189,25 +220,84 @@ messagesRouter.post("/messages/send", requireAuth, async (req: any, res) => {
     return;
   }
 
-  const storedCipher = payload.encryptedText ?? "";
-  const bodyOmitted = !payload.encryptedText;
+  const storedText = payload.encryptedText ?? payload.text ?? "";
+  // Use sender's providerChatId so recipient can look up sender's public key
+  const senderChatId = conn.providerChatId;
 
-  // Messages are delivered Crypt-internally via Socket.IO only.
-  // The provider (Telegram/WhatsApp) is used for auth/linking and inbound,
-  // not for outbound message transport — so messages never appear in the bot chat.
   const message = await Message.create({
     provider: payload.provider,
     direction: "outbound",
-    from: payload.from,
+    accountId,
+    from: senderChatId,
     to: payload.to,
     chatId: payload.chatId,
     deliveryStatus: "sent",
-    encryptedText: storedCipher,
-    bodyOmitted,
+    encryptedText: storedText,
+    bodyOmitted: false,
     attachments: payload.attachments,
   });
 
   broadcastMessage(message);
+
+  // Look up recipient's account for fan-out / MTProto delivery
+  const recipientConn = await ProviderConnection.findOne({
+    provider: payload.provider,
+    providerChatId: payload.chatId,
+    active: true,
+  }).lean();
+  const recipientAccountId = recipientConn?.accountId?.toString();
+
+  // Try MTProto direct send first (requires both sender and recipient to have active sessions)
+  let mtprotoSent = false;
+  if (
+    payload.provider === "telegram" &&
+    hasActiveClient(accountId) &&
+    recipientAccountId &&
+    hasActiveClient(recipientAccountId)
+  ) {
+    try {
+      const sendFn = await sendViaMTProto(accountId, payload.chatId);
+      mtprotoSent = await sendFn(storedText);
+    } catch (mtprotoErr) {
+      console.error("[MTProto] send error:", mtprotoErr);
+    }
+  }
+
+  if (!mtprotoSent) {
+    // Fan-out: create an inbound copy for the recipient so they see the message in Crypt
+    if (recipientAccountId && recipientAccountId !== accountId) {
+      try {
+        const inboundCopy = await Message.create({
+          provider: payload.provider,
+          direction: "inbound",
+          accountId: recipientAccountId,
+          from: senderChatId,
+          to: payload.chatId,
+          chatId: senderChatId,
+          deliveryStatus: "sent",
+          encryptedText: storedText,
+          bodyOmitted: false,
+          attachments: payload.attachments,
+        });
+        broadcastMessage(inboundCopy);
+      } catch (fanoutErr) {
+        console.error("Fan-out copy failed:", fanoutErr);
+      }
+    }
+
+    // Forward via provider bot so the message appears in the native Telegram/WhatsApp app
+    try {
+      await sendToProvider({
+        provider: payload.provider,
+        chatId: payload.chatId,
+        to: payload.to,
+        text: storedText,
+        attachments: payload.attachments,
+      });
+    } catch (providerErr) {
+      console.error("Failed to forward message to provider:", providerErr);
+    }
+  }
 
   res.status(201).json({ data: { message } });
   return;

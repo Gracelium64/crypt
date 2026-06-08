@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ProviderConnection, Key } from "#models";
+import { ProviderConnection, Key, Account } from "#models";
 import { requireAuth } from "./auth.route.js";
 
 const router = Router();
@@ -45,7 +45,14 @@ router.get("/provider/contact/search", async (req, res) => {
     return;
   }
 
-  const keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
+  let keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
+  if (!keyRecord) {
+    // Fallback: look up by account email (for users who registered before key mirroring was added)
+    const account = await Account.findById(conn.accountId).lean();
+    if (account?.email) {
+      keyRecord = await Key.findOne({ ownerId: account.email }).lean();
+    }
+  }
 
   res.status(200).json({
     ok: true,

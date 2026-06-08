@@ -8,7 +8,14 @@
       "Bash(brew install *)",
       "Bash(mkcert -install)",
       "Bash(mkcert localhost *)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(npx tsx *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/telegram/package.json'\\).version\\)\")",
+      "Bash(kill %1)",
+      "Bash(curl -s http://localhost:4000/health)",
+      "Bash(node -e \"import\\('./src/services/telegram-mtproto.service.ts'\\).then\\(m => m.requestPhoneCode\\('test', '+1555000000'\\)\\).catch\\(e => console.error\\('ERROR:', e.message\\)\\)\")",
+      "Bash(curl -s http://localhost:4000/api/keys/8976479213)",
+      "Bash(curl -s \"http://localhost:4000/api/keys/gracelium64%40gmail.com\")"
     ]
   }
 }

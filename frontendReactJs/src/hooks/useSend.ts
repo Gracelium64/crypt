@@ -51,7 +51,7 @@ export default function useSend(authToken: string | null, convHook: any) {
       return true;
     } catch (_err) {
       console.error("sendMessage failed", _err);
-      return false;
+      throw _err;
     } finally {
       setBusy(false);
     }

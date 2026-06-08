@@ -12,3 +12,5 @@ export type {
 } from "./message.js";
 export { default as ProviderConnection } from "./providerConnection.js";
 export type { ProviderConnectionDocument } from "./providerConnection.js";
+export { default as TelegramSession } from "./telegramSession.js";
+export type { TelegramSessionDocument } from "./telegramSession.js";

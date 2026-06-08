@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Message, Link, ProviderConnection } from "#models";
+import { Message, Link, ProviderConnection, Key, Account } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
 import { env } from "../config/env.js";
@@ -186,6 +186,23 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
                 "Created ProviderConnection for account",
                 link.claimedAccountId.toString(),
               );
+              // Mirror any existing key for this account to the new providerChatId
+              try {
+                const account = await Account.findById(link.claimedAccountId).lean();
+                if (account?.email) {
+                  const keyRecord = await Key.findOne({ ownerId: account.email }).lean();
+                  if (keyRecord?.publicKey) {
+                    await Key.findOneAndUpdate(
+                      { ownerId: String(msg.chat.id) },
+                      { publicKey: keyRecord.publicKey },
+                      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+                    );
+                    console.log("Mirrored key to providerChatId", String(msg.chat.id));
+                  }
+                }
+              } catch (mirrorErr) {
+                console.error("Failed to mirror key on link:", mirrorErr);
+              }
             } else if (tgUsername && !existing.username) {
               await ProviderConnection.updateOne(
                 { _id: existing._id },
@@ -221,17 +238,27 @@ providersRouter.post("/providers/telegram/webhook", async (req, res) => {
     console.error("Link code detection error (telegram):", err);
   }
 
+  let inboundAccountId: any = undefined;
+  try {
+    const ownerConn = await ProviderConnection.findOne({
+      provider: "telegram",
+      providerChatId: String(msg.chat.id),
+    }).lean();
+    if (ownerConn?.accountId) inboundAccountId = ownerConn.accountId;
+  } catch { /* non-fatal */ }
+
   const isEncrypted = isMarkedCiphertext(incomingRaw);
   const created = await Message.create({
     provider: "telegram",
     direction: "inbound",
+    accountId: inboundAccountId,
     from: String(msg.from?.id ?? "unknown"),
     to: String(msg.chat.id),
     chatId: String(msg.chat.id),
     providerMessageId: String(msg.message_id),
     deliveryStatus: "sent",
-    encryptedText: isEncrypted ? incomingRaw : "",
-    bodyOmitted: !isEncrypted,
+    encryptedText: incomingRaw,
+    bodyOmitted: false,
     attachments: [],
   });
 
