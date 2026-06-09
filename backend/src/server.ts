@@ -37,7 +37,10 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
-app.use(express.json({ limit: "4mb" }));
+app.use(express.json({
+  limit: "4mb",
+  verify: (req: any, _res, buf) => { req.rawBody = buf; },
+}));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "crypt-backend" });

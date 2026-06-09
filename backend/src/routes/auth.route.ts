@@ -33,17 +33,15 @@ authRouter.post("/auth/signup", async (req, res) => {
 
     const token = jwt.sign(
       { accountId: account._id.toString(), email: account.email },
-      env.JWT_SECRET ?? env.DEMO_ENCRYPTION_KEY,
+      env.JWT_SECRET,
       { expiresIn: "7d" },
     );
 
     res.status(200).json({ ok: true, data: { token } });
     return;
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error("[auth/signup]", error);
+    res.status(500).json({ ok: false, error: "internal server error" });
     return;
   }
 });
@@ -76,17 +74,15 @@ authRouter.post("/auth/login", async (req, res) => {
 
     const token = jwt.sign(
       { accountId: account._id.toString(), email: account.email },
-      env.JWT_SECRET ?? env.DEMO_ENCRYPTION_KEY,
+      env.JWT_SECRET,
       { expiresIn: "7d" },
     );
 
     res.status(200).json({ ok: true, data: { token } });
     return;
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error("[auth/login]", error);
+    res.status(500).json({ ok: false, error: "internal server error" });
     return;
   }
 });
@@ -102,7 +98,7 @@ const requireAuth = (req: any, res: any, next: any) => {
   try {
     const payload = jwt.verify(
       token,
-      env.JWT_SECRET ?? env.DEMO_ENCRYPTION_KEY,
+      env.JWT_SECRET,
     );
     req.account = payload;
     return next();

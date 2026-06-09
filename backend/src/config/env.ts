@@ -23,7 +23,8 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
-  JWT_SECRET: z.string().optional(),
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+  WHATSAPP_APP_SECRET: z.string().optional(),
   SE_CRETS_MASTER_KEY: z.string().optional(),
 });
 
