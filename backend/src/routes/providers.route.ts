@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
 import { isMarkedCiphertext } from "../services/crypto.service.js";
 import { broadcastMessage } from "../services/realtime.service.js";
@@ -283,6 +284,26 @@ providersRouter.get("/providers/whatsapp/webhook", (req, res) => {
 });
 
 providersRouter.post("/providers/whatsapp/webhook", async (req, res) => {
+  if (env.WHATSAPP_APP_SECRET) {
+    const sig = req.header("x-hub-signature-256") ?? "";
+    const expected =
+      "sha256=" +
+      crypto
+        .createHmac("sha256", env.WHATSAPP_APP_SECRET)
+        .update((req as any).rawBody ?? Buffer.alloc(0))
+        .digest("hex");
+    let valid = false;
+    try {
+      valid =
+        sig.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    } catch { /* length mismatch */ }
+    if (!valid) {
+      res.status(403).json({ ok: false, error: "forbidden" });
+      return;
+    }
+  }
+
   const parsed = whatsappInboundSchema.safeParse(req.body);
 
   if (!parsed.success || !parsed.data.entry) {

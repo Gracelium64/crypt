@@ -56,10 +56,8 @@ keysRouter.post("/keys/register", requireAuth, async (req: any, res) => {
     });
     return;
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error("[keys/register]", error);
+    res.status(500).json({ ok: false, error: "internal server error" });
     return;
   }
 });

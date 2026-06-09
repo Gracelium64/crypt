@@ -51,10 +51,8 @@ adminRouter.post(
       res.json({ ok: true, data });
       return;
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      console.error("[admin/set-webhook]", error);
+      res.status(500).json({ ok: false, error: "internal server error" });
       return;
     }
   },
@@ -82,10 +80,8 @@ adminRouter.post(
       res.json({ ok: true, data });
       return;
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      console.error("[admin/delete-webhook]", error);
+      res.status(500).json({ ok: false, error: "internal server error" });
       return;
     }
   },
@@ -116,12 +112,8 @@ adminRouter.post(
       res.status(200).json({ ok: true, data: result });
       return;
     } catch (err) {
-      res
-        .status(500)
-        .json({
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      console.error("[admin/providers/test]", err);
+      res.status(500).json({ ok: false, error: "internal server error" });
       return;
     }
   },

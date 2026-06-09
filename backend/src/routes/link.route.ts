@@ -74,10 +74,8 @@ linkRouter.post("/provider/link/init", requireAuth, async (req: any, res) => {
     });
     return;
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error("[link/init]", error);
+    res.status(500).json({ ok: false, error: "internal server error" });
     return;
   }
 });

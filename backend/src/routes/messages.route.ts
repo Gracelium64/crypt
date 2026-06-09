@@ -311,7 +311,8 @@ messagesRouter.delete("/messages/conversation", requireAuth, async (req: any, re
     res.status(400).json({ ok: false, error: "missing provider or chatId" });
     return;
   }
-  const result = await Message.deleteMany({ provider: provider as any, chatId });
+  const accountId = req.account?.accountId;
+  const result = await Message.deleteMany({ accountId, provider: provider as any, chatId });
   res.json({ ok: true, deleted: result.deletedCount });
   return;
 });
@@ -319,7 +320,8 @@ messagesRouter.delete("/messages/conversation", requireAuth, async (req: any, re
 // Delete all messages (clear inbox) for the calling account's linked provider
 messagesRouter.delete("/messages/all", requireAuth, async (req: any, res) => {
   const provider = String(req.query.provider || "");
-  const query: Record<string, unknown> = {};
+  const accountId = req.account?.accountId;
+  const query: Record<string, unknown> = { accountId };
   if (provider) query.provider = provider;
   const result = await Message.deleteMany(query);
   res.json({ ok: true, deleted: result.deletedCount });
