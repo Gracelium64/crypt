@@ -1,5 +1,15 @@
-declare module "formidable";
-declare module "streamifier";
-declare module "cloudinary";
-declare module "bcryptjs";
-declare module "jsonwebtoken";
+declare global {
+  namespace Express {
+    interface Request {
+      account?: {
+        accountId: string;
+        email: string;
+        iat?: number;
+        exp?: number;
+      };
+      rawBody?: Buffer;
+    }
+  }
+}
+
+export {};

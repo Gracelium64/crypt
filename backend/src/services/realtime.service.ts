@@ -20,6 +20,7 @@ export const initRealtime = (server: HttpServer, corsOrigin: string) => {
 export const broadcastMessage = (message: MessageDocument) => {
   io?.emit("message:new", {
     id: message._id.toString(),
+    accountId: message.accountId?.toString(),
     provider: message.provider,
     direction: message.direction,
     from: message.from,
