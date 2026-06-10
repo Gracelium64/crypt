@@ -20,6 +20,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
   const [step, setStep] = useState<"idle" | "code" | "2fa">("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [disconnectConfirm, setDisconnectConfirm] = useState(false);
 
   const loadStatus = async () => {
     if (!token) return;
@@ -80,8 +81,8 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
   };
 
   const disconnect = async () => {
-    if (!confirm("Disconnect Telegram?")) return;
     setBusy(true);
+    setDisconnectConfirm(false);
     try {
       await apiFetch("/telegram/direct/session", { method: "DELETE" }, token);
       setStatus(null);
@@ -101,9 +102,21 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span className="chip green">Active</span>
-          <button className="btn-ghost btn-sm" type="button" onClick={disconnect} disabled={busy}>
-            Disconnect
-          </button>
+          {disconnectConfirm ? (
+            <>
+              <span style={{ fontSize: 13 }}>Disconnect?</span>
+              <button className="btn-sm btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>
+                Yes
+              </button>
+              <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
+              Disconnect
+            </button>
+          )}
         </div>
       </div>
     );

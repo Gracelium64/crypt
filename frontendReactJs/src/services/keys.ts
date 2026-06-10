@@ -46,4 +46,11 @@ export const registerPublicKey = async (
   );
 };
 
-export default { generateKeypair, registerPublicKey };
+export const resolveKeypairDisplay = async (localOwnerId: string, pubB64: string) => {
+  const raw = Uint8Array.from(atob(pubB64), (c) => c.charCodeAt(0)).buffer;
+  const fingerprint = await fingerprintFromPubKey(raw);
+  const qrDataUrl = await QRCode.toDataURL(`${localOwnerId}:${pubB64}`);
+  return { fingerprint, qrDataUrl };
+};
+
+export default { generateKeypair, registerPublicKey, resolveKeypairDisplay };

@@ -5,7 +5,8 @@ const providerConnectionSchema = new mongoose.Schema(
     accountId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
-      required: true,
+      required: false,
+      default: null,
     },
     provider: { type: String, enum: ["telegram", "whatsapp"], required: true },
     providerChatId: { type: String, required: true },

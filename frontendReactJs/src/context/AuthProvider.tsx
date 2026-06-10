@@ -1,14 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AuthContext } from "./auth-context";
-import {
-  loginRequest,
-  registerRequest,
-  meRequest,
-  logoutRequest,
-} from "../data/auth";
+import { loginRequest, registerRequest, meRequest, logoutRequest } from "@/data";
+import type { User } from "@/types";
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(
     () => localStorage.getItem("crypt:token") ?? null,
   );
@@ -45,11 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setCheckSession(true);
   };
 
-  const register = async (payload: {
-    email: string;
-    password: string;
-    displayName?: string;
-  }) => {
+  const register = async (payload: { email: string; password: string; displayName?: string }) => {
     const { token: t } = await registerRequest(payload);
     localStorage.setItem("crypt:token", t);
     setToken(t);
@@ -65,16 +57,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const value = useMemo(
-    () => ({
-      user,
-      token,
-      signedIn: Boolean(user),
-      login,
-      register,
-      logout,
-      setCheckSession,
-    }),
-    [user, token],
+    () => ({ user, token, signedIn: Boolean(user), checkSession, login, register, logout, setCheckSession }),
+    [user, token, checkSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -5,6 +5,7 @@ export type MessageProvider = Provider;
 export interface ChatMessage {
   _id?: string;
   id?: string;
+  accountId?: string;
   provider: MessageProvider;
   direction: "inbound" | "outbound";
   from: string;
@@ -30,8 +31,20 @@ export interface ConversationSummary {
   plainMessageCount?: number;
   securityState?: string;
 }
+
 export type User = {
   email: string;
   displayName?: string;
   id?: string;
+};
+
+export type LoginPayload = {
+  email: string;
+  password: string;
+};
+
+export type RegisterPayload = {
+  email: string;
+  password: string;
+  displayName?: string;
 };

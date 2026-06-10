@@ -1,0 +1,109 @@
+import type { RequestHandler } from "express";
+import { ProviderConnection, Key, Account } from "#models";
+
+export const getConnections: RequestHandler = async (req, res, next) => {
+  const accountId = req.account!.accountId;
+  try {
+    const connections = await ProviderConnection.find({ accountId }).lean();
+    res.status(200).json({ ok: true, data: connections });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const searchContact: RequestHandler = async (req, res, next) => {
+  const provider = String(req.query.provider || "");
+  const rawUsername = String(req.query.username || "").replace(/^@/, "").trim();
+
+  if (!provider || !rawUsername) {
+    next(new Error("Missing provider or username", { cause: { status: 400 } }));
+    return;
+  }
+
+  try {
+    const usernameRegex = new RegExp(`^${rawUsername}$`, "i");
+    const conn = await ProviderConnection.findOne({
+      provider: provider as "telegram" | "whatsapp",
+      $or: [{ username: usernameRegex }, { displayName: usernameRegex }],
+      active: true,
+    }).lean();
+
+    if (!conn) {
+      next(new Error("User not found — they may need to re-link their account", { cause: { status: 404 } }));
+      return;
+    }
+
+    let keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
+    if (!keyRecord) {
+      const account = await Account.findById(conn.accountId).lean();
+      if (account?.email) {
+        keyRecord = await Key.findOne({ ownerId: account.email }).lean();
+      }
+    }
+
+    res.status(200).json({
+      ok: true,
+      data: {
+        provider: conn.provider,
+        providerChatId: conn.providerChatId,
+        username: conn.username ?? null,
+        displayName: conn.displayName ?? null,
+        publicKey: keyRecord?.publicKey ?? null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resolveContact: RequestHandler = async (req, res, next) => {
+  const provider = String(req.query.provider || "");
+  const chatId = String(req.query.chatId || "");
+
+  if (!provider || !chatId) {
+    next(new Error("Missing provider or chatId", { cause: { status: 400 } }));
+    return;
+  }
+
+  try {
+    const conn = await ProviderConnection.findOne({
+      provider: provider as "telegram" | "whatsapp",
+      providerChatId: chatId,
+    }).lean();
+
+    if (!conn) {
+      next(new Error("Connection not found", { cause: { status: 404 } }));
+      return;
+    }
+
+    const account = await Account.findById(conn.accountId).lean();
+    res.status(200).json({
+      ok: true,
+      data: { accountId: conn.accountId, email: account?.email ?? null },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteConnection: RequestHandler = async (req, res, next) => {
+  const accountId = req.account!.accountId;
+  const id = req.params.id;
+
+  try {
+    const conn = await ProviderConnection.findById(id);
+    if (!conn) {
+      next(new Error("Connection not found", { cause: { status: 404 } }));
+      return;
+    }
+    if (!conn.accountId || conn.accountId.toString() !== accountId) {
+      next(new Error("Forbidden", { cause: { status: 403 } }));
+      return;
+    }
+
+    await conn.deleteOne();
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};

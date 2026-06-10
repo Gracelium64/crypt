@@ -1,13 +1,16 @@
-import { apiJson, apiFetch } from "../lib/api";
+import { apiJson, apiFetch } from "@/lib/api";
+import type { LoginPayload, RegisterPayload, User } from "@/types";
 
-type LoginPayload = { email: string; password: string };
-type RegisterPayload = {
-  email: string;
-  password: string;
-  displayName?: string;
+const parseError = async (res: Response, fallback: string): Promise<string> => {
+  try {
+    const data = await res.json();
+    return typeof data?.error === "string" ? data.error : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
-export const loginRequest = async (payload: LoginPayload) => {
+export const loginRequest = async (payload: LoginPayload): Promise<{ token: string }> => {
   const j = await apiJson("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -16,7 +19,7 @@ export const loginRequest = async (payload: LoginPayload) => {
   return j.data as { token: string };
 };
 
-export const registerRequest = async (payload: RegisterPayload) => {
+export const registerRequest = async (payload: RegisterPayload): Promise<{ token: string }> => {
   const j = await apiJson("/auth/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -25,14 +28,21 @@ export const registerRequest = async (payload: RegisterPayload) => {
   return j.data as { token: string };
 };
 
-export const meRequest = async (token: string) => {
+export const meRequest = async (token: string): Promise<User> => {
   const resp = await apiFetch("/auth/me", {}, token);
-  if (!resp.ok) throw new Error("me fetch failed");
+  if (!resp.ok) throw new Error(await parseError(resp, "Session expired"));
   const j = await resp.json();
-  return j.data as { email: string; displayName?: string; id?: string };
+  return j.data as User;
 };
 
-export const logoutRequest = async () => {
-  // no-op placeholder (server has no logout endpoint)
-  return;
+export const logoutRequest = async (): Promise<void> => {
+  // No server logout endpoint — token cleared client-side
+};
+
+export const nukeAccountRequest = async (token: string): Promise<void> => {
+  const resp = await apiFetch("/auth/account", { method: "DELETE" }, token);
+  if (!resp.ok) {
+    const j = await resp.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof j?.error === "string" ? j.error : "Nuke failed");
+  }
 };

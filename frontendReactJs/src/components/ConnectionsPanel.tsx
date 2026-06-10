@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 type Conn = any;
 
 type Props = {
@@ -13,8 +15,26 @@ const providerIcon: Record<string, string> = {
 };
 
 export default function ConnectionsPanel({ connections, connectionsBusy, loadConnectionsList, deleteConnection }: Props) {
+  const [confirmUnlinkId, setConfirmUnlinkId] = useState<string | null>(null);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+
+  const handleUnlink = async (id: string) => {
+    setUnlinkError(null);
+    setConfirmUnlinkId(null);
+    try {
+      await deleteConnection(id);
+    } catch {
+      setUnlinkError("Failed to unlink — please try again");
+    }
+  };
+
   return (
     <>
+      {unlinkError && (
+        <div style={{ color: "var(--red, #e53e3e)", fontSize: 13, padding: "4px 16px" }}>
+          {unlinkError}
+        </div>
+      )}
       {connections.length === 0 ? (
         <div className="settings-row">
           <span style={{ color: "var(--muted)", fontSize: 14 }}>
@@ -29,21 +49,35 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
               <strong>{conn.displayName || conn.username || conn.providerChatId}</strong>
               <span>{conn.provider} · {conn.providerChatId}</span>
             </div>
-            <button
-              type="button"
-              className="btn-danger btn-sm"
-              disabled={connectionsBusy}
-              onClick={async () => {
-                if (!confirm(`Unlink ${conn.provider}?`)) return;
-                try {
-                  await deleteConnection(conn._id);
-                } catch {
-                  alert("Failed to unlink");
-                }
-              }}
-            >
-              Unlink
-            </button>
+            {confirmUnlinkId === conn._id ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <span style={{ fontSize: 13 }}>Unlink?</span>
+                <button
+                  type="button"
+                  className="btn-danger btn-sm"
+                  disabled={connectionsBusy}
+                  onClick={() => void handleUnlink(conn._id)}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setConfirmUnlinkId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-danger btn-sm"
+                disabled={connectionsBusy}
+                onClick={() => setConfirmUnlinkId(conn._id)}
+              >
+                Unlink
+              </button>
+            )}
           </div>
         ))
       )}
