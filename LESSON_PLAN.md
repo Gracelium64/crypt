@@ -314,10 +314,10 @@ Start each session:
 ```
 MODULE STATUS:
 [x] Module 1 - TypeScript (known)
-[x] Module 2 (routes/models known) — [ ] services remaining
-[x] Module 3 (entry/auth/pages known) — [ ] hooks + API layer remaining
+[x] Module 2 (routes/models known) — [x] services completed 2026-06-11
+[x] Module 3 (entry/auth/pages known) — [x] hooks + API layer completed 2026-06-11
 [x] Module 4 - Auth (known)
-[ ] Module 5 - Cryptography
+[x] Module 5 - Cryptography — completed 2026-06-11
 [ ] Module 6 - Telegram MTProto
 [ ] Module 7 - Socket.IO realtime
 [ ] Module 8 - Media uploads
@@ -325,6 +325,61 @@ MODULE STATUS:
 [ ] Module 10 - UI rework (pre-deadline)
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
+
+## Session Notes
+
+### Module 5 — 2026-06-11
+
+**Corrections given:**
+- **ECDH decryption misunderstood:** Described recipient as "dividing" to reverse the shared key. Correction: recipient independently runs ECDH from their own side (`recipientPrivate × senderPublic`) and arrives at the identical shared key. No reversal — independent derivation. Neither side "undoes" anything.
+- **IV unclear:** Thought IV was part of the secret. Correction: IV is a random 12-byte salt stored openly alongside the ciphertext. Its job is ensuring the same message encrypts differently each time. Security comes from the AES key, not the IV.
+- **HKDF unknown:** Correction: ECDH raw output has mathematical structure; AES requires uniformly random bits. HKDF runs the raw bits through SHA-256 to produce proper key material. The `info` field ("crypt-companion v1") is a domain separator — same keypair in a different app produces a different AES key.
+- **`encryptForRecipient` recall:** Described as using "B's public key separately." Correction: public key is only an input to `deriveAesGcmKey`, not referenced independently after that.
+
+**Good catches:** No `decryptFileForRecipient` exists (logged in REFACTOR_NOTES.md). Security model correctly summarised by end: server holds public keys + IV + ciphertext; private keys never leave the browser → attacker gets nothing useful.
+
+### Module 3 — 2026-06-11
+
+**Corrections given:**
+- **`useCallback` misread:** Described as "limits to one refresh when called." Correction: it stabilises the function reference so React doesn't see a new object on every render. Loop prevention is a consequence of that stability, not a separate feature.
+- **`useMemo` confused with `useCallback`:** Correction: `useCallback` memoizes a **function**, `useMemo` memoizes a **value/object**. Both prevent unnecessary re-renders but for different things.
+- **`useRef` scope too narrow:** Described only as the stale closure fix. Correction: general definition is a mutable box that persists across renders without triggering re-renders when changed. Stale closure fix is one use case; holding DOM references is another.
+- **`useRealtime` stale closure:** Did not recognise the pattern. Correction: without `useRef`, the socket handler captures `onNewMessage` at creation time and never updates. `callbackRef.current` always points to the latest version because a separate no-deps `useEffect` updates it on every render.
+- **`convHook: any` fix:** Suggested passing a message object. Correction: type it as a minimal interface with only the two methods actually called (`loadConversations`, `loadMessages`) — avoids tight coupling to the full hook shape.
+
+**Good instincts:** Correctly identified state held in `useConversations`; correctly spotted decryption runs before appending to state in `handleIncomingMessage`.
+
+**Hook reference (confirmed understood):**
+
+| Hook | What it does |
+|---|---|
+| `useCallback(fn, [deps])` | Memoizes a function — returns the same function reference between renders unless a dependency changes. Prevents stale dependency loops when a function is listed in another hook's deps array. |
+| `useMemo(() => value, [deps])` | Memoizes a computed value/object — only recomputes when a dependency changes. Prevents unnecessary re-renders when a hook returns an object that would otherwise be a new reference every render. |
+| `useRef(initial)` | A mutable box (`ref.current`) that persists across renders without triggering a re-render when changed. Use cases: (1) hold a DOM reference, (2) stale closure fix — store a callback in the ref and update it each render so a long-lived closure (e.g. a socket handler) always calls the latest version. |
+
+### Module 2 — 2026-06-11
+
+**Corrections given:**
+- **`realtime.service` misidentified as provider-facing:** Described as "establishes connection to providers." Correction: it establishes Socket.IO connections to **browsers**, not providers. Telegram/WhatsApp are handled by `providers.service` and the MTProto service.
+- **`crypto.service` described as a pipeline step:** Said it "passes messages to `providers.service` or `realtime.service`." Correction: it is a stateless utility that encrypts/decrypts a string and returns the result. Controllers orchestrate all service calls; services do not call each other.
+- **`media.service` omitted from recall:** Missed in the four-service summary. Handles Cloudinary file uploads via two paths (multipart form-data and base64 JSON).
+
+**Good catches:** Correctly identified `sendToProvider` dispatcher pattern; correctly explained what adding a Signal provider would require (new private function + one if-block).
+
+---
+
+## Revised Time Estimate (as of 2026-06-11)
+
+Based on actual pace (3 modules completed in 1 day vs 3 days estimated) and Claude doing heavy lifting on refactoring:
+
+| Phase | Estimate |
+|---|---|
+| Remaining modules (6, 7, 8, 9) | ~3 days |
+| Refactoring with Claude | ~3 days |
+| Module 10 — UI rework | ~2 days |
+| **Total remaining** | **~8 days** |
+
+Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
 
 ---
 
