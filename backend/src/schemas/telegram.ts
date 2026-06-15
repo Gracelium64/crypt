@@ -11,3 +11,8 @@ export const verifyPhoneCodeSchema = z.object({
 
 export type RequestPhoneCodeBody = z.infer<typeof requestPhoneCodeSchema>;
 export type VerifyPhoneCodeBody = z.infer<typeof verifyPhoneCodeSchema>;
+
+export const qr2faSchema = z.object({
+  password: z.string().min(1),
+});
+export type Qr2faBody = z.infer<typeof qr2faSchema>;
