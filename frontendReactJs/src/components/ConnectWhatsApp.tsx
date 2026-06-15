@@ -9,7 +9,6 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
   const {
     linkCode,
     linkStatus,
-    linkDeepMobile,
     linkDeepWeb,
     linkBusy,
     startLink,
@@ -48,14 +47,9 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
           Send this code in WhatsApp to the business number to link your account.
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {linkDeepMobile && (
-            <button type="button" className="btn-sm" onClick={() => { window.location.href = linkDeepMobile!; }}>
-              Open WhatsApp app
-            </button>
-          )}
           {linkDeepWeb && (
             <button type="button" className="btn-ghost btn-sm" onClick={() => window.open(linkDeepWeb!, "_blank")}>
-              Open WhatsApp web
+              Open WhatsApp
             </button>
           )}
         </div>

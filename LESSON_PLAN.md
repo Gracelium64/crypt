@@ -540,6 +540,354 @@ Why did this work in development? `tsx` resolves `#` imports by reading the `imp
 
 ---
 
+## Module 14 — Frontend Deployment: Native Binary Platform Packages (2026-06-15)
+
+A specific class of deployment failure that affects any project using Vite 8 (or any tool built on native Rust packages). Understanding this pattern means you will recognise and fix it in under 5 minutes next time.
+
+---
+
+### The pattern: native binaries in npm packages
+
+Some npm packages are not pure JavaScript — they contain compiled native code (`.node` files) that must be built for each OS and CPU architecture. They ship these as separate optional npm packages, one per platform:
+
+```
+lightningcss                        (the JS wrapper)
+├── lightningcss-darwin-arm64       (macOS Apple Silicon binary)
+├── lightningcss-darwin-x64         (macOS Intel binary)
+├── lightningcss-linux-x64-gnu      (Linux x64, glibc — what Render runs)
+├── lightningcss-linux-x64-musl     (Linux x64, musl — what Alpine/Docker runs)
+└── ...
+```
+
+At install time, npm only downloads the binary for the current platform. On macOS (your machine), it installs `lightningcss-darwin-arm64` and records only that in `package-lock.json`. On Linux (Render), npm CI reads the lock file and finds `lightningcss-linux-x64-gnu` missing — because it was never in the file.
+
+**The error signature:**
+```
+Error: Cannot find module '../lightningcss.linux-x64-gnu.node'
+```
+or
+```
+Cannot find module '@rolldown/binding-linux-x64-gnu'
+```
+
+Pattern: `Cannot find module` + a filename ending in `.node` or containing a platform string (`linux-x64`, `linux-arm64`, etc.).
+
+---
+
+### Vite 8 has three of these packages
+
+| Package | Role | Symptom when Linux binary missing |
+|---------|------|----------------------------------|
+| `esbuild` | JS/TS transpiler | `Missing: @esbuild/linux-x64@0.28.0 from lock file` |
+| `rolldown` | Bundler (replaced rollup) | `Cannot find module '@rolldown/binding-linux-x64-gnu'` |
+| `lightningcss` | CSS minifier | `Cannot find module '../lightningcss.linux-x64-gnu.node'` |
+
+Each surfaced as a separate deployment failure because each had to be fixed independently.
+
+---
+
+### Why the fixes differed per package
+
+**esbuild** — fixed via `overrides`:
+```json
+"overrides": { "esbuild": "0.28.0" }
+```
+This worked because `vitest@1.0.0` was pulling in esbuild@0.21.x (a version conflict). The override forced a fresh resolution at 0.28.0, and npm included all platform binaries in the lock file during that fresh resolution.
+
+**rolldown and lightningcss** — required explicit `optionalDependencies`:
+```json
+"optionalDependencies": {
+  "@rolldown/binding-linux-x64-gnu": "1.0.0",
+  "@rolldown/binding-linux-x64-musl": "1.0.0",
+  "lightningcss-linux-x64-gnu": "1.32.0",
+  "lightningcss-linux-x64-musl": "1.32.0"
+}
+```
+There was no version conflict to force re-resolution — the packages were already at the right version. Adding them to `optionalDependencies` explicitly forces npm to resolve and lock them even on macOS.
+
+**Why both gnu AND musl?**
+- `gnu` = standard Linux (Ubuntu, Debian, Render's environment)
+- `musl` = Alpine Linux, used in many Docker images
+
+Adding both means the project builds in either environment without further lock file issues.
+
+---
+
+### How to diagnose this class of error in future
+
+1. Build fails with `Cannot find module` + a `.node` file or platform string
+2. Identify which npm package owns that binary (the path in the error shows the package)
+3. Check that package's `optionalDependencies` in its own `package.json`:
+   ```bash
+   cat node_modules/<package>/package.json | grep -A 20 '"optionalDependencies"'
+   ```
+4. Add the `linux-x64-gnu` and `linux-x64-musl` variants to your project's `optionalDependencies` at the matching version
+5. Delete `package-lock.json`, run `npm install`, commit the new lock file
+6. Run `npm run build` locally to confirm before pushing
+
+---
+
+### Why `-gnu` and not `-musl` in `gnu` suffix?
+
+Linux has two main C standard library implementations:
+- **glibc** (GNU C Library) — used in Ubuntu, Debian, RHEL, Render's Ubuntu-based instances
+- **musl** — used in Alpine Linux (common in Docker `node:alpine` images), smaller and more security-focused
+
+Binaries compiled against glibc do NOT run on musl and vice versa. npm knows which you need at install time via the current platform's libc, but since you're installing on macOS, it can't auto-detect either.
+
+---
+
+### Key questions for this module
+
+1. What does `.node` at the end of a filename tell you about what kind of file it is?
+2. You add a new npm package to a project and it works locally on macOS but crashes on your Linux CI with a `Cannot find module` error containing a platform string. What are the first two things you check?
+3. Why does `npm ci` reject a lock file that's missing optional packages, even if "optional" implies they shouldn't be required?
+4. What's the difference between `optionalDependencies` and `devDependencies`? Can a package be both?
+5. You're deploying to an Alpine-based Docker image and get `Cannot find module '...musl.node'`. Why does adding the `-gnu` binary alone not fix it?
+
+---
+
+## Module 15 — Production Deployment to Render.com (2026-06-15)
+
+This module is in two parts. Part A is the clean deployment guide — what to do on a fresh project with no errors, step by step. Part B covers what actually happened during deployment and the production bugs found and fixed afterwards.
+
+---
+
+### Part A — Clean Deployment Guide (Render.com, no Blueprint)
+
+#### What Render needs to know about each service
+
+Render has two service types relevant here:
+
+| Type | Used for | What Render does |
+|---|---|---|
+| Web Service | Backend (Express) | Runs a Node process, assigns a port |
+| Static Site | Frontend (Vite) | Runs a build command, serves `dist/` as CDN |
+
+No Blueprint required. Both are created manually through the Render dashboard.
+
+---
+
+#### Code modifications required before first deployment
+
+These are the changes that MUST exist in the codebase before Render can build and run the app. Make them all before creating any Render services.
+
+**1. Pin Node version in both services**
+
+Create `backend/.node-version` containing `22`.
+Create `frontendReactJs/.node-version` containing `22`.
+
+Why: Render defaults to Node 24 (npm 11). The project was developed with Node 22 (npm 10). Lock file format differs between npm versions — npm 11 rejects lock files generated by npm 10 for optional native packages.
+
+**2. Frontend: force Linux native binaries into the lock file**
+
+In `frontendReactJs/package.json`, add:
+```json
+"overrides": { "esbuild": "0.28.0" },
+"optionalDependencies": {
+  "@rolldown/binding-linux-x64-gnu": "1.0.0",
+  "@rolldown/binding-linux-x64-musl": "1.0.0",
+  "lightningcss-linux-x64-gnu": "1.32.0",
+  "lightningcss-linux-x64-musl": "1.32.0"
+}
+```
+
+Create `frontendReactJs/.npmrc` containing `legacy-peer-deps=true`.
+
+Why: Vite 8 uses three Rust-native packages (esbuild, rolldown, lightningcss). macOS installs only darwin binaries; Render runs on Linux and needs the linux-x64 variants. These must be explicitly listed so npm resolves and locks them even on macOS. See Module 14 for the full explanation.
+
+**3. Frontend: SPA routing fallback**
+
+Create `frontendReactJs/public/_redirects` containing `/* /index.html 200`.
+
+Why: Render serves a static site from CDN. React Router is client-side only. Any URL the user navigates to directly (or refreshes) must return `index.html` — otherwise Render returns a 404 for any path that isn't a real file.
+
+**4. Frontend: Socket.IO must connect to the backend URL, not a relative path**
+
+In `frontendReactJs/src/hooks/useRealtime.ts`, `io()` must use `io(apiBase)` where `apiBase` is pulled from `VITE_API_BASE_URL`.
+
+Why: `io()` with no argument connects to the same origin as the page. In production the frontend is on a different domain from the backend — relative connection is impossible.
+
+**5. Frontend: all API calls must use the configured base URL**
+
+Any raw `fetch('/api/...')` call must be replaced with `apiFetch('/...')`. The `apiFetch` wrapper in `lib/api.ts` prepends `apiBase`.
+
+Why: Same reason as above — different domains in production.
+
+**6. Backend: build stage must include devDependencies**
+
+In the Render build command (or Dockerfile build stage), use `npm ci --include=dev && npm run build`, NOT `npm ci` alone.
+
+Why: `NODE_ENV=production` (set as a Render env var) tells npm to omit devDependencies. TypeScript, `@types/*` packages, and `tsx` are all devDependencies — the build step needs them. The `--include=dev` flag overrides the NODE_ENV behavior for this step only.
+
+**7. Backend: no deep `#services/...` imports**
+
+All imports using package-local aliases must go through the index file:
+```ts
+// Wrong (works in tsx dev, crashes in production Node.js):
+import { initRealtime } from "#services/realtime.service.js";
+
+// Right:
+import { initRealtime } from "#services";
+```
+
+Why: Node.js's `imports` field in `package.json` is strict. It only resolves what's explicitly mapped. `tsx` is more lenient and falls back to filesystem resolution — this masks the error in development.
+
+**8. Backend: CORS must parse a comma-separated origin list**
+
+The `CORS_ORIGIN` env var may contain multiple origins (e.g. for local + production). Socket.IO's `origin` option requires either a string or an array — not a comma-separated string.
+
+Wrap the value: `parseOrigins(raw)` splits on commas, returns a string if there's one origin and an array if there are multiple.
+
+**9. Frontend: TypeScript 6.0 `Uint8Array` is now generic**
+
+`Uint8Array` → `Uint8Array<ArrayBuffer>` in any function signature that passes it to Web Crypto API (`crypto.subtle.*`). TypeScript 6 changed Uint8Array to be generic; Web Crypto requires the specific `ArrayBuffer` variant.
+
+---
+
+#### Render backend (Web Service) — setup
+
+1. Dashboard → New → Web Service → Connect GitHub repo
+2. Root directory: `backend`
+3. Build command: `npm ci --include=dev && npm run build`
+4. Start command: `npm start`
+5. Environment variables:
+
+| Variable | Where to get it |
+|---|---|
+| `MONGODB_URI` | MongoDB Atlas → Connect → Drivers |
+| `JWT_SECRET` | `openssl rand -hex 32` |
+| `CORS_ORIGIN` | Your frontend Render URL (set after frontend is deployed) |
+| `TELEGRAM_BOT_TOKEN` | @BotFather |
+| `TELEGRAM_WEBHOOK_SECRET` | Any string you invent |
+| `TELEGRAM_API_ID` | my.telegram.org → API Development Tools |
+| `TELEGRAM_API_HASH` | Same page |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta → WhatsApp → API Setup |
+| `WHATSAPP_NUMBER` | Same page |
+| `WHATSAPP_ACCESS_TOKEN` | Meta → Business Portfolio → System Users |
+| `WHATSAPP_APP_SECRET` | Meta → App Settings → Basic |
+| `WHATSAPP_VERIFY_TOKEN` | Any string you invent |
+| `CLOUDINARY_URL` | Cloudinary dashboard → API Keys |
+| `NODE_ENV` | `production` |
+
+---
+
+#### Render frontend (Static Site) — setup
+
+1. Dashboard → New → Static Site → Connect GitHub repo
+2. Root directory: `frontendReactJs`
+3. Build command: `npm ci --legacy-peer-deps && npm run build`
+4. Publish directory: `dist`
+5. Environment variable: `VITE_API_BASE_URL` = your backend Render URL (e.g. `https://crypt-backend-s14y.onrender.com/api`)
+
+---
+
+#### Post-deployment checklist (do these after both services are live)
+
+1. **Set Telegram webhook to the production URL:**
+   ```bash
+   curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+     -d "url=https://<backend-url>/api/providers/telegram/webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+   Confirm response: `{"ok":true,"result":true}`.
+
+2. **Update Meta WhatsApp webhook:**
+   In Meta for Developers → WhatsApp → Configuration, set:
+   - Callback URL: `https://<backend-url>/api/providers/whatsapp/webhook`
+   - Verify token: value of `WHATSAPP_VERIFY_TOKEN`
+
+3. **Set `CORS_ORIGIN` on backend** to the frontend Render URL, then redeploy the backend.
+
+4. **Health check:** `curl https://<backend-url>/api/health` — should return `{"ok":true,"service":"crypt-backend"}`.
+
+---
+
+### Part B — Production Bugs Found After Deployment (2026-06-15)
+
+---
+
+#### Bug 1 — Telegram inbound messages not appearing in the web app
+
+**Symptom:** Messages sent from Crypt reached external Telegram users (via CryptBot). Their replies never appeared in the Crypt web app.
+
+**Root cause:** The MTProto send path had an overly strict condition:
+```ts
+if (
+  payload.provider === "telegram" &&
+  hasActiveClient(accountId) &&
+  recipientAccountId &&        // ← requires recipient to be a Crypt user
+  hasActiveClient(recipientAccountId)  // ← requires recipient to also have MTProto
+)
+```
+
+Because external Telegram users have no `ProviderConnection` in the DB, `recipientAccountId` was always undefined → condition never true → bot was used for every send. When the external user replied to the bot, the webhook had no `ProviderConnection` mapped to their Telegram ID → `accountId` was undefined → message saved with no `accountId` → invisible to every user.
+
+**Fix:** Remove the recipient requirements. If the sender has an active MTProto session, always send directly via Telegram:
+```ts
+if (payload.provider === "telegram" && hasActiveClient(accountId))
+```
+
+Replies from external users now come back directly to the sender's Telegram account via MTProto, where `subscribeToMessages` correctly saves them with the sender's `accountId`.
+
+For the edge case where the recipient IS a Crypt user but without their own MTProto session, a fan-out `inboundCopy` is created for them after the MTProto send (`else if (recipientAccountId && !hasActiveClient(recipientAccountId))`).
+
+**File:** `backend/src/controllers/messages.ts`
+
+---
+
+#### Bug 2 — "Open WhatsApp app" button did nothing on Android
+
+**Symptom:** The deep link button (`window.location.href = whatsapp://...`) had no effect on Android. "Open WhatsApp web" (`window.open(wa.me/...)`, `_blank`) correctly opened the WhatsApp app.
+
+**Root cause:** Android browsers restrict `whatsapp://` URI scheme deep links when the page is served from a web app context. No crash, no error — the browser silently ignores the navigation.
+
+**Fix:** Removed the "Open WhatsApp app" button entirely. Renamed "Open WhatsApp web" to "Open WhatsApp". The web link (`wa.me/...`) opens WhatsApp on both platforms — redirects to the app on iPhone automatically.
+
+**File:** `frontendReactJs/src/components/ConnectWhatsApp.tsx`
+
+---
+
+#### Bug 3 — `isCodeViaApp: true` interpreted as error
+
+**Symptom:** Telegram code never received. Logs showed `[MTProto] isCodeViaApp: true`.
+
+**Root cause:** Not a bug. `isCodeViaApp: true` is Telegram's standard behavior when the account has an active Telegram app installed — Telegram sends the code as an in-app message (a message from the official "Telegram" account in your chat list) instead of SMS.
+
+**Resolution:** Look for the code in the Telegram app chat list, in the message from the "Telegram" account. Clear stale `telegramsessions` documents in MongoDB if old sessions are preventing fresh auth codes.
+
+---
+
+#### Observation — Port 10000 in Render logs
+
+`==> Detected service running on port 10000` is a **success message**, not an error. Render auto-assigns port 10000 (via the `PORT` env var) and this line confirms the backend bound to it correctly. The app is running.
+
+---
+
+#### Code cleanup done in this session
+
+| File | Change |
+|---|---|
+| `frontendReactJs/src/components/KeyManager.tsx` | Removed QR code display and `qrDataUrl` prop — redundant since key handshake is backend-mediated |
+| `frontendReactJs/src/pages/SettingsPage.tsx` | Removed `qrDataUrl` prop (cascading from KeyManager) |
+| `frontendReactJs/src/App.tsx` | Removed `qrDataUrl` state, `setQrDataUrl` calls, prop passing |
+| `frontendReactJs/src/components/ConnectWhatsApp.tsx` | Removed "Open WhatsApp app" button; kept and renamed "Open WhatsApp web" |
+| `frontendReactJs/src/components/OnboardingModal.tsx` | Full rewrite: added WhatsApp step, updated Telegram step to mention in-app code, updated key sync step to mention password-based cross-device restore, updated Find to mention WhatsApp phone number search |
+| `backend/src/controllers/messages.ts` | MTProto condition fix (see Bug 1 above) |
+
+---
+
+### Key questions for this module
+
+1. Why does `npm ci` fail when `package-lock.json` was generated on a different npm major version? What specifically changes between npm 10 and npm 11?
+2. You deploy a Vite SPA to a static host. The home page loads but navigating directly to `/settings` returns 404. What file do you add and what does it contain?
+3. The backend has `NODE_ENV=production` set as an env var. The build command is `npm ci && npm run build`. What goes wrong and why? What's the fix?
+4. Explain why `io()` works in local development but must be changed to `io(apiBase)` in production.
+5. A Telegram auth code has `isCodeViaApp: true` in the logs. What does this mean, and where should the user look for the code?
+6. After the MTProto send fix, what happens when User A (with MTProto) sends to User B (also on Crypt, but without MTProto)? Trace the full path including the fan-out.
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -621,6 +969,8 @@ MODULE STATUS:
 [x] Module 11 - Real-world debugging session — completed 2026-06-15
 [x] Module 12 - WhatsApp Business API integration — completed 2026-06-15
 [x] Module 13 - Production deployment debugging — completed 2026-06-15
+[x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
+[x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 

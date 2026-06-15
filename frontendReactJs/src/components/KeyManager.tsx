@@ -6,7 +6,6 @@ type Props = {
   pubKeyB64: string | null;
   privJwk: any | null;
   fingerprint: string | null;
-  qrDataUrl: string | null;
   keyBusy: boolean;
   keyError: string | null;
   generateAndRegisterKeypair: () => Promise<void>;
@@ -21,7 +20,6 @@ export default function KeyManager(props: Props) {
     pubKeyB64,
     privJwk,
     fingerprint,
-    qrDataUrl,
     keyBusy,
     keyError,
     generateAndRegisterKeypair,
@@ -98,7 +96,6 @@ export default function KeyManager(props: Props) {
           {fingerprint && (
             <div className="fingerprint">Fingerprint: {fingerprint}</div>
           )}
-          {qrDataUrl && <img src={qrDataUrl} alt="QR" style={{ width: 140 }} />}
           {privJwk && (
             <div className="private-status">Private key stored locally</div>
           )}
