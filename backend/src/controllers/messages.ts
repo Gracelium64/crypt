@@ -1,7 +1,6 @@
 import type { RequestHandler } from "express";
 import { Message, ProviderConnection } from "#models";
-import { isMarkedCiphertext, broadcastMessage, sendToProvider } from "#services";
-import { hasActiveClient, sendViaMTProto } from "#services/telegram-mtproto.service.js";
+import { isMarkedCiphertext, broadcastMessage, sendToProvider, hasActiveClient, sendViaMTProto } from "#services";
 import type { SendMessageBody, MessagesQuery, ConversationsQuery } from "#schemas";
 
 type ConversationSummary = {
