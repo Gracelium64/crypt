@@ -90,6 +90,9 @@ export default function SettingsPage({
       {/* Connect Telegram */}
       <div className="settings-section">
         <div className="settings-section-title">Connect Telegram</div>
+        <div style={{ padding: "0 16px 4px", fontSize: 13, color: "var(--text-dim, #94aac4)", lineHeight: 1.5 }}>
+          Use <strong>Phone code</strong> to receive a verification code in your Telegram app. If no code arrives, switch to <strong>QR code</strong> and tap <em>Open in Telegram</em> to confirm the login directly from this device — no second device needed.
+        </div>
         <div style={{ padding: "4px 16px 12px" }}>
           <ConnectTelegram
             token={auth.token}
