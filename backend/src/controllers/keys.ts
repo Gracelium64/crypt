@@ -2,15 +2,40 @@ import type { RequestHandler } from "express";
 import { Key, ProviderConnection } from "#models";
 import type { RegisterKeyBody } from "#schemas";
 
+export const getMyPrivateKey: RequestHandler = async (req, res, next) => {
+  const ownerId = req.account!.email;
+  try {
+    const record = await Key.findOne({ ownerId }).lean();
+    if (!record?.privateKeyJwk) {
+      next(new Error("No private key stored", { cause: { status: 404 } }));
+      return;
+    }
+    res.json({ ok: true, data: { privateKeyJwk: record.privateKeyJwk } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const registerKey: RequestHandler = async (req, res, next) => {
-  const { publicKey } = req.body as RegisterKeyBody;
+  const { publicKey, privateKeyJwk } = req.body as RegisterKeyBody;
   const ownerId = req.account!.email;
   const accountId = req.account!.accountId;
 
   try {
+    const update: Record<string, unknown> = { publicKey };
+    if (privateKeyJwk !== undefined) {
+      update.privateKeyJwk = privateKeyJwk;
+    } else {
+      // New public key without a blob → clear any stale blob to avoid key mismatch
+      const existing = await Key.findOne({ ownerId }, { publicKey: 1, _id: 0 }).lean();
+      if (!existing || existing.publicKey !== publicKey) {
+        update.privateKeyJwk = null;
+      }
+    }
+
     const record = await Key.findOneAndUpdate(
       { ownerId },
-      { publicKey },
+      update,
       { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
 

@@ -245,6 +245,83 @@ When a link is claimed, both users' public keys are in the `link` document. The 
 
 ---
 
+## Module 11 — Real-World Debugging Session (2026-06-15)
+
+This module covers four bugs found and fixed in a live debugging session. Read each one as a case study: what the symptom was, where the bug lived, and what pattern it reveals.
+
+---
+
+### Bug 1 — Telegram session not logging out server-side on disconnect
+
+**Symptom:** After disconnecting a Telegram account from the app and trying to reconnect, the verification code never arrived on the device.
+
+**Root cause:** `disconnectMTProtoSession()` called `client.disconnect()` (closes the TCP connection locally) but never called `api.auth.LogOut()` on Telegram's servers. Telegram still considered the old session alive. When `sendCode()` was called for the same number, Telegram routed the code to that still-alive backend session as an in-app message — not SMS, and not visible to the user.
+
+**Fix:** Call `client.invoke(new Api.auth.LogOut({}))` before `client.disconnect()`, and clear `sessionString` in the DB on disconnect.
+
+**Pattern:** Closing a connection locally is not the same as closing it remotely. Any protocol that tracks sessions server-side (Telegram MTProto, OAuth, WebSockets with server-side state) requires an explicit logout/deregister step or the server-side state persists indefinitely.
+
+**Diagnostic added:** `sendCode()` response has a `type` field — `auth.SentCodeTypeApp` vs `auth.SentCodeTypeSms` — that tells you exactly how Telegram delivered the code. Now logged on every `requestPhoneCode` call.
+
+---
+
+### Bug 2 — Multi-device E2E decryption failing (different keypairs per browser)
+
+**Symptom:** Encrypted messages showed as ciphertext on one device while decrypting fine on another. Settings showed different fingerprints on mobile vs desktop for the same account.
+
+**Root cause:** Private keys were generated in the browser and stored in `localStorage` only. Each browser/device has isolated localStorage. On first login from a new device, `autoSetupKey` found no key in localStorage, generated a fresh keypair, and registered the new public key — overwriting the old one in the DB. Messages encrypted with the old public key became permanently unreadable on the new device, and vice versa.
+
+**Fix:** Server-side key storage with PBKDF2-based encryption. The private key never leaves the browser unencrypted. Full flow:
+
+1. **Key generation (first login on any device):** generate ECDH P-256 keypair → PBKDF2-derive a wrapping key from the user's login password (310,000 iterations, SHA-256, random 16-byte salt) → AES-GCM encrypt the private key JWK → store encrypted blob on server alongside the public key
+2. **Key restore (subsequent login on any device):** fetch encrypted blob → PBKDF2-derive same wrapping key from login password + stored salt → AES-GCM decrypt → same private key on every device
+3. **Logout:** clears `crypt:priv:{email}` and `crypt:pub:{email}` from localStorage so the restore path runs on next login
+
+**Security property:** The server holds `AES-GCM(PBKDF2(password, salt, 310k), privateKeyJwk)`. A DB dump without the user's password is useless.
+
+**Files changed:**
+- `backend/src/models/key.ts` — added `privateKeyJwk: Mixed` field
+- `backend/src/schemas/keys.ts` — added optional `privateKeyJwk: string` to register schema
+- `backend/src/controllers/keys.ts` — added `getMyPrivateKey` endpoint; stale-blob protection in `registerKey` (clears blob when public key changes without a new blob, preventing key mismatch)
+- `backend/src/routes/keys.route.ts` — added `GET /keys/me/private` (authenticated)
+- `frontendReactJs/src/services/keys.ts` — added `encryptPrivateKey`, `decryptPrivateKey`, `fetchAndDecryptPrivateKey` using Web Crypto PBKDF2
+- `frontendReactJs/src/context/auth-context.ts` — added `consumePassword()` to context type
+- `frontendReactJs/src/context/AuthProvider.tsx` — stashes login password in a `useRef` immediately after successful auth; `consumePassword()` reads and clears it (one-time use)
+- `frontendReactJs/src/App.tsx` — rewrote `autoSetupKey`: localStorage → server decrypt → generate new
+
+**Pattern:** Password threading across async React state boundaries. The password is only available in the login form at the moment of submission. It needs to reach a `useEffect` that fires later (after `meRequest` completes and sets the user). The solution: store it in a `useRef` in AuthProvider immediately after `loginRequest()` resolves, expose a one-shot `consumePassword()` on the context, call it at the top of the key-setup effect. Refs survive across renders and React Strict Mode remounts without triggering re-renders.
+
+---
+
+### Bug 3 — React Strict Mode race condition generating competing keypairs
+
+**Symptom:** After implementing server-side key sync, keys still differed between devices on every test cycle. The server never retained a working encrypted blob.
+
+**Root cause:** React 18 Strict Mode double-invokes effects to detect side effects. Both invocations of `autoSetupKey` ran concurrently as async functions:
+- **1st run:** `consumePassword()` → gets password → network fetch → (awaiting) → generates key K1 → uploads encrypted K1
+- **2nd run:** starts immediately, `consumePassword()` → null (consumed) → no localStorage yet (1st run's async subtlecrypto not done) → falls through to generate key K2 → uploads K2 without an encrypted blob
+
+If the 2nd run's upload completed last, the server ended up with K2's public key and no blob. Every subsequent login fell through to generate yet another fresh key.
+
+**Fix:** Two-part guard:
+1. `keySetupInProgress = useRef(false)` — checked at the start of `autoSetupKey`, set to true, cleared in `finally`. The synchronous guard check means the 2nd Strict Mode invocation hits `true` and returns immediately before doing anything.
+2. Early exit when no localStorage key AND no password — this covers the same case with an explicit intent: if we can't decrypt the server blob and can't encrypt a new one, there's nothing useful to do.
+
+**Pattern:** Strict Mode is a development-only feature but it actively reveals bugs in effects with external side effects (network writes, localStorage). The fix pattern for any async effect that must not run concurrently is a `useRef` guard (not `useState` — state changes trigger re-renders; refs don't).
+
+---
+
+### Key questions for this module:
+
+1. Why does Telegram route login codes to existing active sessions instead of always sending SMS?
+2. What is the difference between `client.disconnect()` and `api.auth.LogOut()` in a stateful protocol?
+3. Why is PBKDF2 used here instead of just AES-encrypting the private key directly with the password?
+4. What does `consumePassword()` return if called twice? Why is that the right behaviour?
+5. Why is `useRef` correct for the concurrency guard but `useState` would be wrong?
+6. What happens to the server's encrypted blob if the user clicks "Generate New Keypair" mid-session (without a password available)? What does the backend do with it and why?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -323,6 +400,7 @@ MODULE STATUS:
 [ ] Module 8 - Media uploads
 [ ] Module 9 - Link/pairing system
 [ ] Module 10 - UI rework (pre-deadline)
+[x] Module 11 - Real-world debugging session — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 

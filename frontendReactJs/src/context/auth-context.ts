@@ -10,6 +10,7 @@ export type AuthContextType = {
   register: (payload: { email: string; password: string; displayName?: string }) => Promise<void>;
   logout: () => Promise<void>;
   setCheckSession: (v: boolean) => void;
+  consumePassword: () => string | null;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
