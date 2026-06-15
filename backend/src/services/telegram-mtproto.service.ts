@@ -271,6 +271,134 @@ export async function sendViaMTProto(
   };
 }
 
+// ── QR-code login ────────────────────────────────────────────────────────────
+
+interface PendingQr {
+  client: TelegramClient;
+  token: string;
+  step: "qr" | "2fa" | "done" | "error";
+  twoFaResolver?: (password: string) => void;
+  error?: string;
+}
+const pendingQr = new Map<string, PendingQr>();
+
+export function getQrLoginStatus(accountId: string): { token: string; step: string; error?: string } {
+  const entry = pendingQr.get(accountId);
+  if (!entry) return { token: "", step: "idle" };
+  return { token: entry.token, step: entry.step, error: entry.error };
+}
+
+export function resolveQr2fa(accountId: string, password: string): void {
+  const entry = pendingQr.get(accountId);
+  if (!entry?.twoFaResolver) throw new Error("No pending 2FA for this session");
+  entry.twoFaResolver(password);
+  entry.step = "qr";
+  entry.twoFaResolver = undefined;
+}
+
+export async function startQrLogin(accountId: string): Promise<void> {
+  if (!API_ID || !API_HASH) {
+    throw new Error("Telegram MTProto not configured (set TELEGRAM_API_ID + TELEGRAM_API_HASH)");
+  }
+
+  const existing = pendingQr.get(accountId);
+  if (existing) {
+    try { await existing.client.disconnect(); } catch { /* ignore */ }
+    pendingQr.delete(accountId);
+  }
+
+  const client = createClient("");
+  (client as any).on?.("error", (err: unknown) => {
+    console.error("[MTProto QR] client error:", err);
+  });
+
+  await client.connect();
+
+  const entry: PendingQr = { client, token: "", step: "qr" };
+  pendingQr.set(accountId, entry);
+
+  void (async () => {
+    try {
+      await client.signInUserWithQrCode(
+        { apiId: API_ID, apiHash: API_HASH },
+        {
+          qrCode: async (code: { token: Buffer; expires: number }) => {
+            const token = `tg://login?token=${code.token.toString("base64url")}`;
+            const e = pendingQr.get(accountId);
+            if (e) e.token = token;
+            console.log("[MTProto QR] token refreshed for", accountId);
+          },
+          onError: async (err: Error) => {
+            console.error("[MTProto QR] error:", err);
+            const e = pendingQr.get(accountId);
+            if (e) { e.step = "error"; e.error = err.message; }
+            return false;
+          },
+          password: async (_hint?: string) => {
+            const e = pendingQr.get(accountId);
+            if (!e) throw new Error("No pending QR session");
+            e.step = "2fa";
+            console.log("[MTProto QR] 2FA required for", accountId);
+            return new Promise<string>((resolve) => { e.twoFaResolver = resolve; });
+          },
+        },
+      );
+
+      const sessionString = (client.session as StringSession).save() as string;
+      const me = await client.getMe() as any;
+      const userId: string | null = me?.id?.toString() ?? null;
+      const username: string | null = me?.username ?? null;
+      const phoneNumber: string = me?.phone ?? "qr-login";
+      const displayName =
+        [me?.firstName, me?.lastName].filter(Boolean).join(" ").trim() ||
+        username || userId || phoneNumber;
+
+      await TelegramSession.findOneAndUpdate(
+        { accountId },
+        { accountId, phoneNumber, sessionString, active: true },
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+      );
+
+      if (userId) {
+        await ProviderConnection.findOneAndUpdate(
+          { accountId, provider: "telegram" },
+          { accountId, provider: "telegram", providerChatId: userId, displayName, username, active: true },
+          { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+        );
+
+        const account = await Account.findById(accountId).lean();
+        if (account?.email) {
+          const keyRecord = await Key.findOne({ ownerId: account.email }).lean();
+          if (keyRecord?.publicKey) {
+            await Key.findOneAndUpdate(
+              { ownerId: userId },
+              { publicKey: keyRecord.publicKey },
+              { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+            );
+          }
+        }
+      }
+
+      const oldClient = clients.get(accountId);
+      if (oldClient) {
+        try { await oldClient.disconnect(); } catch { /* ignore */ }
+      }
+      clients.set(accountId, client);
+      subscribeToMessages(client, accountId);
+
+      const e = pendingQr.get(accountId);
+      if (e) e.step = "done";
+      console.log("[MTProto QR] auth complete for", accountId);
+    } catch (err) {
+      console.error("[MTProto QR] auth failed:", err);
+      const e = pendingQr.get(accountId);
+      if (e) { e.step = "error"; e.error = (err as Error).message; }
+    }
+  })();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function disconnectMTProtoSession(accountId: string): Promise<void> {
   const client = clients.get(accountId);
   if (client) {

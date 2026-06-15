@@ -5,6 +5,9 @@ import {
   verifyPhoneCode,
   hasActiveClient,
   disconnectMTProtoSession,
+  startQrLogin,
+  getQrLoginStatus,
+  resolveQr2fa,
 } from "#services";
 import type { RequestPhoneCodeBody, VerifyPhoneCodeBody } from "#schemas";
 
@@ -46,6 +49,32 @@ export const verifyCode: RequestHandler = async (req, res, next) => {
     res.json({ ok: true });
   } catch (err) {
     next(new Error((err as Error)?.message ?? "Verification failed", { cause: { status: 400 } }));
+  }
+};
+
+export const requestQrLogin: RequestHandler = async (req, res, next) => {
+  const accountId = req.account!.accountId;
+  try {
+    await startQrLogin(accountId);
+    res.json({ ok: true });
+  } catch (err) {
+    next(new Error((err as Error)?.message ?? "Failed to start QR login", { cause: { status: 500 } }));
+  }
+};
+
+export const getQrStatus: RequestHandler = (req, res) => {
+  const accountId = req.account!.accountId;
+  res.json({ ok: true, data: getQrLoginStatus(accountId) });
+};
+
+export const submitQr2fa: RequestHandler = (req, res, next) => {
+  const { password } = req.body as { password: string };
+  const accountId = req.account!.accountId;
+  try {
+    resolveQr2fa(accountId, password);
+    res.json({ ok: true });
+  } catch (err) {
+    next(new Error((err as Error)?.message ?? "Failed to submit 2FA", { cause: { status: 400 } }));
   }
 };
 
