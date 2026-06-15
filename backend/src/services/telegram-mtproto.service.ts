@@ -10,6 +10,10 @@ import { env } from "../config/env.js";
 const API_ID = env.TELEGRAM_API_ID ?? 0;
 const API_HASH = env.TELEGRAM_API_HASH ?? "";
 
+// Derive the CryptBot's own Telegram user ID from the bot token ("id:hash")
+// so we can filter out bot-echoed messages in subscribeToMessages.
+const BOT_USER_ID = env.TELEGRAM_BOT_TOKEN?.split(":")[0] ?? "";
+
 // In-memory registry: accountId → connected client
 const clients = new Map<string, TelegramClient>();
 
@@ -39,6 +43,10 @@ function subscribeToMessages(client: TelegramClient, accountId: string): void {
         msg.peerId?.userId?.toString() ??
         "";
       if (!fromId) return;
+
+      // Ignore messages sent by the CryptBot itself (happens when bot-delivery
+      // echoes back to an MTProto-linked account, creating spurious conversations).
+      if (BOT_USER_ID && fromId === BOT_USER_ID) return;
 
       // Own connection to get this account's providerChatId
       const ownerConn = await ProviderConnection.findOne({
@@ -115,7 +123,11 @@ export async function loadAllMTProtoSessions(): Promise<void> {
 }
 
 export function hasActiveClient(accountId: string): boolean {
-  return clients.has(accountId);
+  const client = clients.get(accountId);
+  // Check both presence AND an active TCP connection. A client that is in the
+  // map but has dropped its Telegram connection would otherwise suppress the
+  // fan-out copy, leaving the recipient with no inbound message in Crypt.
+  return client !== undefined && (client.connected ?? false);
 }
 
 export async function requestPhoneCode(
@@ -252,12 +264,24 @@ export async function sendViaMTProto(
     try {
       if (!client.connected) await client.connect();
 
-      // Try to get entity by numeric Telegram ID
       const recipientId = BigInt(recipientProviderChatId);
+
+      // Try numeric ID first; if entity not cached, fall back to @username.
+      let peer: any;
+      try {
+        peer = await client.getInputEntity(recipientId as any);
+      } catch {
+        const conn = await ProviderConnection.findOne({
+          provider: "telegram",
+          providerChatId: recipientProviderChatId,
+        }).lean();
+        if (!conn?.username) throw new Error("Cannot resolve Telegram entity — no username available");
+        peer = await client.getInputEntity(`@${conn.username}`);
+      }
 
       await client.invoke(
         new Api.messages.SendMessage({
-          peer: await client.getInputEntity(recipientId as any),
+          peer,
           message: text,
           randomId: BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)) as any,
           noWebpage: true,
@@ -351,7 +375,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
       const phoneNumber: string = me?.phone ?? "qr-login";
       const displayName =
         [me?.firstName, me?.lastName].filter(Boolean).join(" ").trim() ||
-        username || userId || phoneNumber;
+        username || phoneNumber || userId;
 
       await TelegramSession.findOneAndUpdate(
         { accountId },

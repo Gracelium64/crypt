@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { Key, ProviderConnection } from "#models";
+import { Key, ProviderConnection, Account } from "#models";
 import type { RegisterKeyBody } from "#schemas";
 
 export const getMyPrivateKey: RequestHandler = async (req, res, next) => {
@@ -72,7 +72,31 @@ export const getKey: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const record = await Key.findOne({ ownerId }).lean();
+    let record = await Key.findOne({ ownerId }).lean();
+
+    if (!record) {
+      // ownerId might be a provider chat ID (e.g. Telegram user ID) whose key
+      // was never mirrored. Resolve via ProviderConnection → Account → email key,
+      // then mirror so future lookups are fast.
+      const conn = await ProviderConnection.findOne({ providerChatId: ownerId }).lean();
+      if (conn?.accountId) {
+        const account = await Account.findById(conn.accountId).lean();
+        if (account?.email) {
+          const emailRecord = await Key.findOne({ ownerId: account.email }).lean();
+          if (emailRecord?.publicKey) {
+            try {
+              await Key.findOneAndUpdate(
+                { ownerId },
+                { publicKey: emailRecord.publicKey },
+                { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+              );
+            } catch { /* mirror best-effort */ }
+            record = emailRecord;
+          }
+        }
+      }
+    }
+
     if (!record) {
       next(new Error("Key not found", { cause: { status: 404 } }));
       return;

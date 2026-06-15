@@ -280,12 +280,26 @@ function AppContent() {
 
   const { isRealtime } = useRealtime(onNewMessage);
 
+  // Catch-up refresh whenever Socket.IO (re)connects — covers messages that
+  // arrived while the tab was backgrounded / the connection was dead.
+  const prevIsRealtime = useRef(false);
   useEffect(() => {
-    if (isRealtime) return;
+    if (isRealtime && !prevIsRealtime.current) {
+      void loadConversations(provider);
+      if (selectedChatId) void loadMessages(provider, selectedChatId);
+    }
+    prevIsRealtime.current = isRealtime;
+  }, [isRealtime, provider, selectedChatId, loadConversations, loadMessages]);
+
+  // Keep a background poll even when Socket.IO is live so mobile users who
+  // miss real-time events (backgrounded tab, dropped connection) still see
+  // messages within 30 s. When not connected, poll every 10 s.
+  useEffect(() => {
+    const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
       void loadConversations(provider);
       void loadMessages(provider, selectedChatId, convHook.lastSync || undefined);
-    }, 10000);
+    }, interval);
     return () => window.clearInterval(timer);
   }, [isRealtime, convHook.lastSync, provider, selectedChatId, loadConversations, loadMessages]);
 
