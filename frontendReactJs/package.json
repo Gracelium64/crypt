@@ -20,6 +20,10 @@
   "overrides": {
     "esbuild": "0.28.0"
   },
+  "optionalDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "1.0.0",
+    "@rolldown/binding-linux-x64-musl": "1.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.12.3",
