@@ -5,27 +5,31 @@ type Props = {
 const steps: { title: string; body: string }[] = [
   {
     title: "1 · Create an account",
-    body: "Sign up with your email and a password of at least 8 characters. Your credentials stay on the server — no third-party auth.",
+    body: "Sign up with your email and a password of at least 8 characters. Your credentials stay on the server — no third-party auth. Your password is also used to encrypt your private key for cross-device sync, so choose something you'll remember.",
   },
   {
     title: "2 · Connect Telegram",
-    body: "Go to Settings → Connect Telegram. Enter your phone number to link your Telegram account via MTProto (direct peer-to-peer, no bot required). This is what lets Crypt send and receive messages through your real Telegram identity.",
+    body: "Go to Settings → Connect Telegram. Enter your phone number and the verification code sent to your Telegram app (look for a message from the official Telegram account — not SMS). This links your real Telegram identity to Crypt via MTProto, so messages go directly between accounts without routing through a bot.",
   },
   {
-    title: "3 · Encryption keys",
-    body: "A keypair is generated automatically on your first sign-in and registered to your account. You never need to do this manually. If you ever need a fresh keypair, go to Settings → Security & Keys → Generate New Keypair — but be aware that old messages will become unreadable once the key changes.",
+    title: "3 · Connect WhatsApp",
+    body: "Go to Settings → Connect WhatsApp → Generate link code. You'll get a code like \"LINK ABCD1234\". Tap Open WhatsApp to open a chat with the Crypt business number, then send that code. WhatsApp will confirm the link and your account is connected. On iPhone this opens the WhatsApp app directly; on Android use the web link.",
   },
   {
-    title: "4 · Find contacts",
-    body: "Use the 🔍 Find tab to look up other Crypt users by their Telegram username or ID. Both users must have Crypt accounts and connected Telegram for end-to-end encrypted messaging to work.",
+    title: "4 · Encryption keys",
+    body: "A keypair is generated automatically on first sign-in and synced to the server encrypted with your password. On any new device, signing in with the same credentials restores your keys automatically — no manual export needed. To regenerate, go to Settings → Security & Keys → Generate New Keypair, but note that old messages will become unreadable.",
   },
   {
-    title: "5 · Send messages",
-    body: "Open a conversation and pick a mode before sending. Secure mode encrypts the message on your device before it leaves — only the recipient can read it. Plain mode sends readable text, useful when the other person isn't on Crypt.",
+    title: "5 · Find contacts",
+    body: "Use the 🔍 Find tab to search for contacts. For Telegram, search by @username. For WhatsApp, enter the phone number with country code (e.g. +4915200000000). Contacts who also use Crypt will show a key fingerprint — end-to-end encryption is available. Contacts without Crypt receive messages as plain text via the provider.",
   },
   {
-    title: "6 · Nuke Account",
-    body: "Tap the ☢️ icon in the top-left of the Chats view to permanently delete your account, messages, keys, and all linked data. A 10-second countdown gives you time to cancel. This action is irreversible.",
+    title: "6 · Send messages",
+    body: "Open a conversation and pick a mode. Secure mode encrypts the message on your device — the server stores only ciphertext and only the recipient can decrypt it. Plain mode sends readable text, useful for contacts not on Crypt. Both modes work across Telegram and WhatsApp.",
+  },
+  {
+    title: "7 · Nuke Account",
+    body: "Tap the ☢️ icon in the top-left of the Chats view to permanently delete your account, all messages, keys, connections, and linked data. A 10-second countdown gives you time to cancel. This action is irreversible.",
   },
 ];
 

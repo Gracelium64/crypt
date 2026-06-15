@@ -30,7 +30,6 @@ function AppContent() {
   const [privJwk, setPrivJwk] = useState<unknown>(null);
   const keySetupInProgress = useRef(false);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [nukeOpen, setNukeOpen] = useState(false);
@@ -169,9 +168,8 @@ function AppContent() {
         localStorage.setItem(`crypt:pub:${email}`, pub);
         await registerPublicKeyService(pub, auth.token, jwk, password);
         try {
-          const { fingerprint: fp, qrDataUrl: qr } = await resolveKeypairDisplay(email, pub);
+          const { fingerprint: fp } = await resolveKeypairDisplay(email, pub);
           setFingerprint(fp);
-          setQrDataUrl(qr);
         } catch { /* non-fatal */ }
         return true;
       } catch {
@@ -215,7 +213,6 @@ function AppContent() {
         setPrivJwk(r.privJwk);
         setPubKeyB64(r.pubB64);
         setFingerprint(r.fingerprint);
-        setQrDataUrl(r.qrDataUrl);
         await registerPublicKeyService(r.pubB64, auth.token, r.privJwk, password);
       } catch (err) {
         console.error("Auto key setup failed:", err);
@@ -305,7 +302,6 @@ function AppContent() {
       setPubKeyB64(r.pubB64);
       setPrivJwk(r.privJwk);
       setFingerprint(r.fingerprint);
-      setQrDataUrl(r.qrDataUrl);
       await registerPublicKeyService(r.pubB64, auth.token);
       await connectionsHook.loadConnectionsList();
     } catch (err) {
@@ -458,7 +454,6 @@ function AppContent() {
                 pubKeyB64={pubKeyB64}
                 privJwk={privJwk}
                 fingerprint={fingerprint}
-                qrDataUrl={qrDataUrl}
                 keyBusy={keyBusy}
                 keyError={keyError}
                 generateAndRegisterKeypair={generateAndRegisterKeypair}
