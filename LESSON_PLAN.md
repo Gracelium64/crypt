@@ -66,9 +66,9 @@ Answer: `express.json()` only parses `application/json`. File uploads come as `m
 This is the most architecturally important service. It receives raw events from Telegram's Bot API webhook and WhatsApp, then normalizes them into the app's internal `Message` schema.  
 Read with this question in mind: "What would break if I added a third provider (e.g. Signal)? What would I need to add here?"
 
-### 5. `services/telegram-mtproto.service.ts` (~390 lines) — save for Module 6
+### 5. `services/telegram-mtproto.service.ts` (~435 lines) — save for Module 6
 
-Skip for now. Covered in depth in Module 6. Note: file grew significantly in the 2026-06-15 session — QR login functions were added (`startQrLogin`, `getQrLoginStatus`, `resolveQr2fa`, `PendingQr` interface). See Module 16 Part C for the full explanation before reading this file.
+Skip for now. Covered in depth in Module 6. Note: file grew significantly across two sessions — QR login functions were added 2026-06-15 (`startQrLogin`, `getQrLoginStatus`, `resolveQr2fa`, `PendingQr` interface; see Module 16 Part C), and further fixes were added in the same session: `BOT_USER_ID` echo filter, `sendViaMTProto` username fallback, `displayName` fallback order, and the `hasActiveClient` connection-state check (see Module 17).
 
 ### End-of-module question:
 
@@ -1058,6 +1058,150 @@ A `tg://login?token=<base64url>` deep link was added as a button so mobile users
 
 ---
 
+## Module 17 — Message Delivery Debugging: Ghost Connections + Mobile Reconnect (2026-06-15)
+
+A production debugging session with direct MongoDB access. Two scenarios were broken; both were traced to the database layer before any code was read. Documents how to diagnose message delivery failures from the data backwards.
+
+---
+
+### The two broken scenarios
+
+| Scenario | Setup | Symptom |
+|----------|-------|---------|
+| 1 | A (deep-link/CryptBot) ↔ B (CryptBot) | Messages go to CryptBot in both directions, never appear in Crypt for either party |
+| 2 | A (deep-link/CryptBot) ↔ B (QR) | A→B works; B→A arrives in Telegram app but never shows in Crypt |
+
+---
+
+### Root cause 1 — Ghost ProviderConnections
+
+**What they are:** When old test accounts were deleted, their `ProviderConnection` documents were not cleaned up. Those documents had `active: true` and pointed to accountIds that no longer exist in the `accounts` collection. Two ghosts existed:
+- `providerChatId: 1000235704` → `accountId: 6a270254...` (deleted)
+- `providerChatId: 8976479213` → `accountId: 6a2701c4...` (deleted)
+
+**Why they caused failures:**
+
+The fan-out query in `messages.ts`:
+```typescript
+ProviderConnection.findOne({ provider, providerChatId: payload.chatId, active: true })
+```
+Already filtered `active: true` — but both the ghost AND the real connection were `active: true`. MongoDB returns the document with the smaller `_id` (insertion order) first. The ghosts were created earlier, so they always won. Fan-out copies landed on accountIds that no real user owns: the messages were in the DB but invisible to everyone.
+
+The bot webhook in `providers.ts` had an even weaker query — no `active: true` filter — making it easier for the ghost to win.
+
+**How it was diagnosed:** Querying the `providerconnections` collection directly and cross-referencing `accountId` values against the `accounts` collection. The ghost accountIds simply didn't appear there.
+
+**The fix:**
+
+*DB:* Deactivated both ghost ProviderConnections in Atlas directly (no deploy needed, takes effect immediately for the live backend).
+
+*Code:* After `ProviderConnection.findOne(...)`, verify the returned `accountId` actually exists in `Account`:
+```typescript
+const accountExists = await Account.exists({ _id: recipientConn.accountId });
+if (accountExists) recipientAccountId = recipientConn.accountId.toString();
+```
+Added in both `messages.ts` (fan-out path) and `providers.ts` (webhook inbound path). Prevents any future ghost from intercepting messages.
+
+**Files:** `backend/src/controllers/messages.ts`, `backend/src/controllers/providers.ts`
+
+---
+
+### Root cause 2 — Missing ProviderConnection for B
+
+B (test@test.com) had completed three CryptBot link flows, all of which logged `completed: true` in the `links` collection. But the `ProviderConnection` that should have been created by each link was missing.
+
+Likely cause: transient backend error during connection creation, swallowed by the existing `try/catch` around `ProviderConnection.create()` in the link handler. The link itself was marked complete but the connection was never persisted.
+
+**Fix:** Created the missing connection directly in Atlas. The code path that creates it during the link flow was not changed — it already uses the correct accountId. The lesson here is that try/catch around DB writes without any alerting means silent partial failures. The link is "done" from the code's perspective but the side effect was lost.
+
+---
+
+### Root cause 3 — `hasActiveClient` checking map presence, not TCP state
+
+`hasActiveClient(accountId)` originally checked `clients.has(accountId)`. gramjs keeps the client object in the map even after the TCP connection to Telegram drops (network interruption, Render sleep cycle). So `hasActiveClient` returned `true` for a disconnected client, which suppressed the fan-out copy, and the recipient's MTProto subscription (which was dead) never received the message either.
+
+**Fix:**
+```typescript
+export function hasActiveClient(accountId: string): boolean {
+  const client = clients.get(accountId);
+  return client !== undefined && (client.connected ?? false);
+}
+```
+`client.connected` is a live property on the gramjs `TelegramClient` instance. A map entry is not the same as a live connection. This directly fixed Scenario 2 B→A.
+
+**File:** `backend/src/services/telegram-mtproto.service.ts`
+
+---
+
+### Root cause 4 — Mobile backgrounding kills Socket.IO; polling disabled on reconnect
+
+When a user switches from Crypt to the Telegram app on mobile, the browser backgrounds the tab and drops the Socket.IO WebSocket connection. On return, Socket.IO reconnects and `isRealtime` flips back to `true` — but the old code stopped polling as soon as `isRealtime` was true. Any Socket.IO broadcasts that fired during the background gap were missed permanently.
+
+**Two fixes in `App.tsx`:**
+
+1. **Reconnect flush:** A `prevIsRealtime` ref detects the `false → true` transition and immediately calls `loadConversations` + `loadMessages` to pull any messages that arrived during the gap.
+
+```typescript
+const prevIsRealtime = useRef(false);
+useEffect(() => {
+  if (isRealtime && !prevIsRealtime.current) {
+    void loadConversations(provider);
+    if (selectedChatId) void loadMessages(provider, selectedChatId);
+  }
+  prevIsRealtime.current = isRealtime;
+}, [isRealtime, provider, selectedChatId, loadConversations, loadMessages]);
+```
+
+2. **Always-on polling:** Removed the `if (isRealtime) return;` early exit. Polling now runs at 30 s when Socket.IO is connected (safety net) and 10 s when it is not.
+
+**File:** `frontendReactJs/src/App.tsx`
+
+---
+
+### Additional fixes in the same session
+
+**`getKey` fallback via ProviderConnection chain** (`controllers/keys.ts`):
+When a message is being decrypted and the key lookup for a `providerChatId` (Telegram user ID) returns nothing, the handler now falls back: `ProviderConnection.findOne({ providerChatId })` → `Account.findById(conn.accountId)` → `Key.findOne({ ownerId: account.email })`. Then mirrors the found key back to the `providerChatId` for fast future lookups. Fixes decryption failures for users whose key was registered before their Telegram linking was set up.
+
+**CryptBot echo filter** (`telegram-mtproto.service.ts`):
+```typescript
+const BOT_USER_ID = env.TELEGRAM_BOT_TOKEN?.split(":")[0] ?? "";
+if (BOT_USER_ID && fromId === BOT_USER_ID) return;
+```
+When A has an active MTProto connection and receives a message delivered via CryptBot, the bot's own message was creating a spurious conversation with `chatId = bot's user ID`. The bot token always starts with `<userId>:`, so the ID is extractable without any API call.
+
+**`sendViaMTProto` username fallback** (`telegram-mtproto.service.ts`):
+`getInputEntity(recipientId)` requires the entity to already be in gramjs's local cache. For freshly connected clients (QR login), the cache is empty. If the first attempt fails, the code now looks up the recipient's `@username` in `ProviderConnection` and retries with `getInputEntity("@username")`.
+
+**`displayName` fallback order** (`startQrLogin` in `telegram-mtproto.service.ts`):
+Changed from `username || userId || phoneNumber` to `username || phoneNumber || userId`. A numeric Telegram user ID is the least human-readable fallback — a phone number is better.
+
+---
+
+### Debugging methodology used in this session
+
+1. Connected to the live Atlas cluster directly via `mongosh`.
+2. Queried `accounts`, `providerconnections`, `telegramsessions` and manually cross-referenced IDs.
+3. Queried `messages` filtered by each real `accountId` to confirm which messages were visible to which users vs which went to ghosts.
+4. Identified missing connections by checking `links` (all completed) vs `providerconnections` (no result for B).
+
+**Pattern:** When messages are "in Telegram but not in Crypt," the first question is: do the DB records exist? If yes, what `accountId` do they carry? If that `accountId` doesn't match any real account, the fan-out is writing to a ghost.
+
+**Security note:** DB credentials must never appear in shell output. Use env substitution (`$MONGODB_URI`) or a connection script rather than embedding the URI inline in a command.
+
+---
+
+### Key questions for this module
+
+1. The fan-out query already had `active: true`. Why did ghost connections still win? What query change alone would not have been enough without the DB cleanup?
+2. `client.connected` returns `boolean | undefined` on gramjs's type. Why was `client.connected ?? false` the correct fix rather than `!!client.connected` or `Boolean(client.connected)`?
+3. A user switches to another app for 3 minutes, then returns to Crypt. With the fixes in place, describe exactly what happens in the first 2 seconds after the tab is foregrounded.
+4. Why does the CryptBot filter use `env.TELEGRAM_BOT_TOKEN?.split(":")[0]` rather than making an API call to get the bot's user ID?
+5. The `getKey` fallback does an on-the-fly mirror write. What are the implications if two requests race through this path simultaneously for the same `ownerId`? Is `findOneAndUpdate` with `upsert: true` safe here?
+6. B linked via CryptBot three times. Each link completed (`completed: true` in the `links` collection). The `ProviderConnection` was never created. The error was swallowed. What would you add to the link handler to make this class of failure visible?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -1149,6 +1293,7 @@ MODULE STATUS:
 [x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
 [x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
 [x] Module 16 - Telegram linking debugging + multi-mode connection UI — completed 2026-06-15
+[x] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 

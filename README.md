@@ -120,26 +120,16 @@ If you want, I can attempt these checks from this environment — I can compile 
 
 Implemented now:
 
-- Realtime updates through Socket.IO
+- Realtime updates through Socket.IO with 30 s keep-alive polling and reconnect catch-up flush
 - Polling fallback every 10 seconds when socket disconnects
 - Provider sidebar navigation for Telegram and WhatsApp
-- Provider web sign-in links to the official web clients
 - Conversation inbox derived from stored messages
 - Secure and plain reply modes for each selected thread
-- Full Image Attachment pipeline:
-  - Frontend image upload preview, file selection & clearing.
-  - Formidable multipart upload: browser uploads files to the backend which processes them with `formidable`.
-  - Cloudinary hosting: backend uploads media to Cloudinary for stable public URLs (proxy and base64 upload fallback supported).
-  - Inbound WhatsApp file pipeline: auto-download and store images in Cloudinary from Meta callbacks.
-- Telegram Webhook Admin CLI and API endpoints.
-
-Notes:
-
-- Telegram and WhatsApp web clients are used for browser sign-in and operator access.
-- The backend still uses Telegram bot credentials and WhatsApp Cloud API credentials for message delivery and inbound webhook handling.
-
-Planned next:
-
-- real Telegram outbound adapter
-- real WhatsApp outbound adapter
-- production-grade auth and access control
+- Full Image Attachment pipeline (Formidable multipart + Cloudinary hosting + inbound WhatsApp media)
+- Telegram MTProto direct connection: phone-code login, QR-code login, and CryptBot fallback
+- WhatsApp Business API integration (Cloud API webhook + fan-out delivery)
+- E2E encryption: ECDH P-256 key exchange, AES-GCM per-message encryption, cross-device key sync via PBKDF2-wrapped private key stored server-side
+- Fan-out message copy system: both parties see every message in Crypt regardless of delivery path
+- Ghost-connection guard: ProviderConnection accountId is verified against the accounts collection before fan-out to prevent deleted accounts intercepting messages
+- Key fallback resolution: `getKey` resolves via ProviderConnection → Account → email if a direct lookup misses
+- Deployed to Render (backend Web Service + frontend Static Site)
