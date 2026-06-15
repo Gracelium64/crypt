@@ -91,7 +91,7 @@ export default function SettingsPage({
       <div className="settings-section">
         <div className="settings-section-title">Connect Telegram</div>
         <div style={{ padding: "0 16px 4px", fontSize: 13, color: "var(--text-dim, #94aac4)", lineHeight: 1.5 }}>
-          Use <strong>Phone code</strong> to receive a verification code in your Telegram app. If no code arrives, switch to <strong>QR code</strong> and tap <em>Open in Telegram</em> to confirm the login directly from this device — no second device needed.
+          <strong>Phone code</strong> — enter your number and confirm the code that appears in your Telegram app (look for a message from the "Telegram" account, not SMS). If no code arrives, try <strong>QR code</strong> — you will need a second device to scan it. As a last resort, <strong>Via CryptBot</strong> links your account reliably but routes messages through the bot instead of direct user-to-user.
         </div>
         <div style={{ padding: "4px 16px 12px" }}>
           <ConnectTelegram
