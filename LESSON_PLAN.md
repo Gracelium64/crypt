@@ -540,6 +540,113 @@ Why did this work in development? `tsx` resolves `#` imports by reading the `imp
 
 ---
 
+## Module 14 — Frontend Deployment: Native Binary Platform Packages (2026-06-15)
+
+A specific class of deployment failure that affects any project using Vite 8 (or any tool built on native Rust packages). Understanding this pattern means you will recognise and fix it in under 5 minutes next time.
+
+---
+
+### The pattern: native binaries in npm packages
+
+Some npm packages are not pure JavaScript — they contain compiled native code (`.node` files) that must be built for each OS and CPU architecture. They ship these as separate optional npm packages, one per platform:
+
+```
+lightningcss                        (the JS wrapper)
+├── lightningcss-darwin-arm64       (macOS Apple Silicon binary)
+├── lightningcss-darwin-x64         (macOS Intel binary)
+├── lightningcss-linux-x64-gnu      (Linux x64, glibc — what Render runs)
+├── lightningcss-linux-x64-musl     (Linux x64, musl — what Alpine/Docker runs)
+└── ...
+```
+
+At install time, npm only downloads the binary for the current platform. On macOS (your machine), it installs `lightningcss-darwin-arm64` and records only that in `package-lock.json`. On Linux (Render), npm CI reads the lock file and finds `lightningcss-linux-x64-gnu` missing — because it was never in the file.
+
+**The error signature:**
+```
+Error: Cannot find module '../lightningcss.linux-x64-gnu.node'
+```
+or
+```
+Cannot find module '@rolldown/binding-linux-x64-gnu'
+```
+
+Pattern: `Cannot find module` + a filename ending in `.node` or containing a platform string (`linux-x64`, `linux-arm64`, etc.).
+
+---
+
+### Vite 8 has three of these packages
+
+| Package | Role | Symptom when Linux binary missing |
+|---------|------|----------------------------------|
+| `esbuild` | JS/TS transpiler | `Missing: @esbuild/linux-x64@0.28.0 from lock file` |
+| `rolldown` | Bundler (replaced rollup) | `Cannot find module '@rolldown/binding-linux-x64-gnu'` |
+| `lightningcss` | CSS minifier | `Cannot find module '../lightningcss.linux-x64-gnu.node'` |
+
+Each surfaced as a separate deployment failure because each had to be fixed independently.
+
+---
+
+### Why the fixes differed per package
+
+**esbuild** — fixed via `overrides`:
+```json
+"overrides": { "esbuild": "0.28.0" }
+```
+This worked because `vitest@1.0.0` was pulling in esbuild@0.21.x (a version conflict). The override forced a fresh resolution at 0.28.0, and npm included all platform binaries in the lock file during that fresh resolution.
+
+**rolldown and lightningcss** — required explicit `optionalDependencies`:
+```json
+"optionalDependencies": {
+  "@rolldown/binding-linux-x64-gnu": "1.0.0",
+  "@rolldown/binding-linux-x64-musl": "1.0.0",
+  "lightningcss-linux-x64-gnu": "1.32.0",
+  "lightningcss-linux-x64-musl": "1.32.0"
+}
+```
+There was no version conflict to force re-resolution — the packages were already at the right version. Adding them to `optionalDependencies` explicitly forces npm to resolve and lock them even on macOS.
+
+**Why both gnu AND musl?**
+- `gnu` = standard Linux (Ubuntu, Debian, Render's environment)
+- `musl` = Alpine Linux, used in many Docker images
+
+Adding both means the project builds in either environment without further lock file issues.
+
+---
+
+### How to diagnose this class of error in future
+
+1. Build fails with `Cannot find module` + a `.node` file or platform string
+2. Identify which npm package owns that binary (the path in the error shows the package)
+3. Check that package's `optionalDependencies` in its own `package.json`:
+   ```bash
+   cat node_modules/<package>/package.json | grep -A 20 '"optionalDependencies"'
+   ```
+4. Add the `linux-x64-gnu` and `linux-x64-musl` variants to your project's `optionalDependencies` at the matching version
+5. Delete `package-lock.json`, run `npm install`, commit the new lock file
+6. Run `npm run build` locally to confirm before pushing
+
+---
+
+### Why `-gnu` and not `-musl` in `gnu` suffix?
+
+Linux has two main C standard library implementations:
+- **glibc** (GNU C Library) — used in Ubuntu, Debian, RHEL, Render's Ubuntu-based instances
+- **musl** — used in Alpine Linux (common in Docker `node:alpine` images), smaller and more security-focused
+
+Binaries compiled against glibc do NOT run on musl and vice versa. npm knows which you need at install time via the current platform's libc, but since you're installing on macOS, it can't auto-detect either.
+
+---
+
+### Key questions for this module
+
+1. What does `.node` at the end of a filename tell you about what kind of file it is?
+2. You add a new npm package to a project and it works locally on macOS but crashes on your Linux CI with a `Cannot find module` error containing a platform string. What are the first two things you check?
+3. Why does `npm ci` reject a lock file that's missing optional packages, even if "optional" implies they shouldn't be required?
+4. What's the difference between `optionalDependencies` and `devDependencies`? Can a package be both?
+5. You're deploying to an Alpine-based Docker image and get `Cannot find module '...musl.node'`. Why does adding the `-gnu` binary alone not fix it?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -621,6 +728,7 @@ MODULE STATUS:
 [x] Module 11 - Real-world debugging session — completed 2026-06-15
 [x] Module 12 - WhatsApp Business API integration — completed 2026-06-15
 [x] Module 13 - Production deployment debugging — completed 2026-06-15
+[x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
