@@ -9,7 +9,7 @@ const steps: { title: string; body: string }[] = [
   },
   {
     title: "2 · Connect Telegram",
-    body: "Go to Settings → Connect Telegram. Try Phone code first: enter your number and the code that appears as a message from the official 'Telegram' account in your app. If no code arrives, switch to QR code and tap 'Open in Telegram' — your Telegram app will ask you to confirm the login directly on this device. Either way, messages go directly between accounts without routing through a bot.",
+    body: "Go to Settings → Connect Telegram. Three options are available:\n\n1. Phone code — enter your number and the verification code that appears as a message from the official 'Telegram' account in your app (not SMS). This links your real identity for direct user-to-user messaging.\n\n2. QR code — generates a scannable code. You need a second device (computer or another phone) to scan it via Telegram → Settings → Devices → Link Desktop Device.\n\n3. Via CryptBot — the most reliable option. Generates a short code you send to @CryptBot in Telegram. Messages route through the bot rather than directly, but linking always works.",
   },
   {
     title: "3 · Connect WhatsApp",

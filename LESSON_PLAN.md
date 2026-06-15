@@ -66,9 +66,9 @@ Answer: `express.json()` only parses `application/json`. File uploads come as `m
 This is the most architecturally important service. It receives raw events from Telegram's Bot API webhook and WhatsApp, then normalizes them into the app's internal `Message` schema.  
 Read with this question in mind: "What would break if I added a third provider (e.g. Signal)? What would I need to add here?"
 
-### 5. `services/telegram-mtproto.service.ts` (280 lines) — save for Module 6
+### 5. `services/telegram-mtproto.service.ts` (~390 lines) — save for Module 6
 
-Skip for now. Covered in depth in Module 6.
+Skip for now. Covered in depth in Module 6. Note: file grew significantly in the 2026-06-15 session — QR login functions were added (`startQrLogin`, `getQrLoginStatus`, `resolveQr2fa`, `PendingQr` interface). See Module 16 Part C for the full explanation before reading this file.
 
 ### End-of-module question:
 
@@ -940,6 +940,124 @@ For the edge case where the recipient IS a Crypt user but without their own MTPr
 
 ---
 
+## Module 16 — Telegram Linking: Debugging + Multi-Mode Connection UI (2026-06-15)
+
+A full investigation session: the phone code linking stopped working during a live demo and resisted several fix attempts. Documents the root cause, what was ruled out, what was built as a result, and the architectural constraint that makes single-device MTProto auth from a server hard.
+
+---
+
+### Part A — Data Architecture (pre-session question)
+
+Before debugging began, two architectural questions were answered by reading the code:
+
+**Does deleting a chat delete from the DB or just the UI?**
+`deleteConversation` (`controllers/messages.ts`) runs `Message.deleteMany({ accountId, provider, chatId })` — permanent DB delete. The `ProviderConnection` record for that contact is NOT removed, only the messages.
+
+**Does nuking an account delete everything?**
+`nukeAccount` (`controllers/auth.ts`) deletes in order: `Message`, `ProviderConnection`, `TelegramSession`, `Link` (claimed), `Key` (by email), and finally the `Account` document itself. One gap: anonymous contact `ProviderConnection` records (`accountId: null`) created by the inbound webhook upsert are not cleaned up — they have no owner to key the delete on.
+
+---
+
+### Part B — Root Cause Investigation
+
+**Timeline of what happened:**
+
+| Date | Event |
+|------|-------|
+| Before Friday | MTProto phone code linking working (backend on localhost, Cloudflare tunnel for HTTP) |
+| Friday demo | Multiple link/unlink cycles during live testing |
+| Friday onwards | Phone code sent successfully (`phoneCodeHash` returned, `isCodeViaApp: true`) but code never arrives in Telegram app |
+| Session | New `api_id`/`api_hash` — same result. Deployed to Render — same result. |
+
+**What was ruled out (in order):**
+
+1. **Wrong phone number format** — tried with and without `+` prefix. No change.
+2. **FLOOD_WAIT on `api_id`** — new credentials from second Telegram account. No change.
+3. **Datacenter IP (Render)** — broken since Friday when still on localhost via Cloudflare tunnel. IP is irrelevant.
+4. **Multiple active sessions** — Telegram Devices screen showed only one: Samsung Galaxy A14, online. Nowhere else for the code to go.
+
+**Actual root cause:**
+Telegram applies a **per-phone-number silent suppression** after too many auth attempts in a short window. `sendCode` returns `phoneCodeHash` successfully — Telegram accepts the API call — but silently does not deliver the code to the device. No error is returned. This was triggered by the Friday demo's repeated link/unlink/re-link cycles. The restriction is time-based (days to weeks) and is confirmed by:
+- New `api_id` not helping (restriction on number, not app credentials)
+- Telegram Web's phone login still working (Telegram Web has a trusted `api_id` that bypasses the restriction)
+- `isCodeViaApp: true` means Telegram acknowledged the request; the suppression is asynchronous delivery-side
+
+**Clarification on Cloudflare tunnel vs Workers:**
+`cloudflared tunnel --url http://localhost:...` is NOT Cloudflare Workers. The tunnel only forwards incoming HTTP traffic to localhost. The backend code runs locally, so MTProto TCP connections to Telegram come from the local machine's residential IP. This is why it worked before — and why the IP was never the problem.
+
+---
+
+### Part C — QR Code Login Implementation
+
+**Why QR login bypasses the problem:**
+`signInUserWithQrCode` uses `auth.exportLoginToken` instead of `auth.sendCode`. No code is pushed to any device. Telegram generates a token; the user's own Telegram app accepts it by calling `auth.acceptLoginToken`. The silent suppression only affects `sendCode` delivery.
+
+**Backend additions (`telegram-mtproto.service.ts`):**
+
+```
+pendingQr: Map<accountId, PendingQr>  // tracks QR session state per user
+```
+
+| Function | What it does |
+|----------|-------------|
+| `startQrLogin(accountId)` | Creates a gramjs client, calls `signInUserWithQrCode` in a background async task, stores current token in `pendingQr`. The `qrCode` callback fires every ~20s with a refreshed token. |
+| `getQrLoginStatus(accountId)` | Returns `{ token, step, error }` for frontend polling. `step` is `qr \| 2fa \| done \| error`. |
+| `resolveQr2fa(accountId, password)` | Resolves the deferred Promise the `password` callback is waiting on, unblocking the auth flow. |
+
+On successful scan: same session-save + `ProviderConnection` upsert + key mirror as the phone flow. Phone number obtained from `client.getMe().phone` (no user input needed).
+
+**New routes:**
+- `POST /telegram/direct/request-qr` — starts the background session
+- `GET /telegram/direct/qr-status` — polling endpoint (called every 4s by frontend)
+- `POST /telegram/direct/qr-2fa` — submits 2FA password when step becomes `"2fa"`
+
+**2FA handling:** The `password` callback in gramjs returns a Promise. When 2FA is required, `step` is set to `"2fa"` and a resolver function is stored. When the frontend posts the password, `resolveQr2fa` resolves that Promise, unblocking the auth flow. This is a deferred Promise pattern — the HTTP request lifecycle and the gramjs callback lifecycle are decoupled.
+
+---
+
+### Part D — What Didn't Work: The Deep Link Attempt
+
+A `tg://login?token=<base64url>` deep link was added as a button so mobile users could complete QR auth on the same device. The deep link URL is exactly what QR codes encode — the hypothesis was that tapping it in the browser would open Telegram and trigger `auth.acceptLoginToken`.
+
+**Results from real device testing:**
+- **Android:** Nothing happened. The `tg://` URI scheme is either not handled or Telegram opens without navigating anywhere useful.
+- **iPhone:** Telegram opened and showed: *"This code can be used to allow someone to log in to your Telegram account. To confirm Telegram login, please go to Settings → Devices → Link Desktop Device and scan the code."* — Telegram recognizes the token but routes it as a security notification, not an auto-accept. The user is redirected to the QR scanner, which requires a second device to have something to scan.
+
+**Conclusion:** Telegram apps on both platforms do not implement `auth.acceptLoginToken` via `tg://` deep link. The QR scanning UX (point camera at code) is the only path that auto-accepts. The deep link button was removed and replaced with a clear instruction that a second device is required.
+
+**Pattern:** Library/API documentation describes what the protocol supports. App implementations decide what user-facing gesture triggers it. These are not the same thing.
+
+---
+
+### Part E — Final UI: Three-Mode `ConnectTelegram` Component
+
+`ConnectTelegram.tsx` was refactored to expose three tabs:
+
+| Tab | How it works | Message routing | Reliability |
+|-----|-------------|-----------------|-------------|
+| Phone code | `sendCode` → code in Telegram app → `signIn` → MTProto session | User-to-user direct | Blocked by per-number suppression currently |
+| QR code | `signInUserWithQrCode` → scan with second device | User-to-user direct | Works, requires second device |
+| Via CryptBot | `useLink` hook → generate LINK code → send to @CryptBot | Through bot | Always works |
+
+**Implementation note for bot tab:** Uses the existing `useLink` hook (same as `ConnectWhatsApp`). On mount, `useLink` restores any pending link from `sessionStorage` — the `useEffect(() => { if (linkCode) setMode("bot"); }, [linkCode])` guard switches the active tab back to bot mode automatically if a pending link is recovered after page reload.
+
+**Settings descriptor:** Added above the component in `SettingsPage.tsx` explaining all three methods and their trade-offs in plain language.
+
+**Onboarding step 2:** Updated to describe all three methods with explicit priority order: phone code → QR (second device needed) → CryptBot (always works).
+
+---
+
+### Key questions for this module
+
+1. `sendCode` returns `phoneCodeHash` with no error. The code never arrives. What are the two ways Telegram can silently accept an API call without delivering the result?
+2. Why does using a new `api_id`/`api_hash` not fix a per-number suppression, but DOES fix a per-`api_id` FLOOD_WAIT?
+3. The QR `password` callback returns a `Promise<string>`. The HTTP request that provides the password is a completely separate network call. How does `resolveQr2fa` connect these two — what pattern is this?
+4. Why is `useRef` used for the QR poll interval (`qrPollRef`) rather than storing the interval ID in state?
+5. A user starts the QR flow, closes the browser, reopens the app. Does the pending bot link survive? Does the QR session survive? Why the difference?
+6. The nuke operation deletes `ProviderConnection` by `accountId`. Anonymous contact records have `accountId: null`. What query would you add to also clean those up for a given user's linked phone numbers?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -1030,6 +1148,7 @@ MODULE STATUS:
 [x] Module 13 - Production deployment debugging — completed 2026-06-15
 [x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
 [x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
+[x] Module 16 - Telegram linking debugging + multi-mode connection UI — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
@@ -1090,6 +1209,37 @@ Based on actual pace (3 modules completed in 1 day vs 3 days estimated) and Clau
 | **Total remaining**            | **~8 days** |
 
 Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
+
+---
+
+---
+
+### Handoff — WhatsApp Business Phone Number Registration (pending as of 2026-06-15)
+
+**Current state:** Using Meta's shared test number (`+1 555 656 9889`). Limited to 5 manually approved recipient numbers. No one outside that list can use WhatsApp with the app.
+
+**What needs to happen to open it for general use:**
+
+1. **Get a dedicated SIM or VoIP number** — do NOT use `+4915224337813` (personal WhatsApp account on the Samsung Galaxy A14). Migrating a personal number to the WhatsApp Business API is one-way: the number can no longer be used with the regular WhatsApp consumer app. Options:
+   - Cheap prepaid SIM (German number is fine — country doesn't matter for the API)
+   - VoIP number that can receive an SMS verification code (e.g. Twilio, Vonage, or a local provider). Note: some VoIP numbers are rejected by Meta — test with SMS receipt before committing.
+
+2. **Add the number in Meta for Developers** → WhatsApp → API Setup → Step 5 "Add a phone number" → verify via SMS or phone call.
+
+3. **Complete Business Verification in Meta Business Manager** — required to lift the 5-recipient cap and unlock production API access. Requires uploading business documents (registration, address proof). For a solo developer / student project, Meta accepts freelancer/sole trader registrations in some regions.
+
+4. **Submit app for Meta App Review** — request `whatsapp_business_messaging` and `whatsapp_business_management` permissions. Takes a few days to a week. Requires a working demo and privacy policy URL.
+
+5. **Replace env vars** — once the new number is live:
+   - `WHATSAPP_PHONE_NUMBER_ID` → new number's ID from Meta dashboard
+   - `WHATSAPP_NUMBER` → new number (for deep link generation)
+   - `WHATSAPP_ACCESS_TOKEN` → generate a System User token (permanent, not the 24h temp token)
+
+**Pricing context (as of mid-2025, verify before spending):**
+- 1,000 free user-initiated conversations/month (user messages the bot first)
+- Business-initiated messages (bot messages user first) are charged from the first one
+- Crypt's LINK flow is entirely user-initiated (user sends the code) — fits the free tier well for early testing
+- Active users staying within 24h reply windows stay free; users receiving a message after 24h silence start a chargeable business-initiated conversation
 
 ---
 
