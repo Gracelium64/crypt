@@ -26,6 +26,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
 
   // qr flow
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string>("");
   const [qrStep, setQrStep] = useState<"idle" | "scanning" | "2fa" | "done" | "error">("idle");
   const [qr2faPassword, setQr2faPassword] = useState("");
   const [qrError, setQrError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
         const data = j.data as { token: string; step: string; error?: string };
 
         if (data.token) {
+          setQrToken(data.token);
           const url = await QRCode.toDataURL(data.token, { width: 200, margin: 1 });
           setQrDataUrl(url);
         }
@@ -92,6 +94,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
     setBusy(true);
     setQrError(null);
     setQrDataUrl(null);
+    setQrToken("");
     setQrStep("scanning");
     try {
       await apiJson("/telegram/direct/request-qr", { method: "POST" }, token);
@@ -317,15 +320,46 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
           )}
 
           {qrStep === "scanning" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {qrDataUrl
-                ? <img src={qrDataUrl} alt="Telegram QR login" style={{ width: 200, height: 200, borderRadius: 8 }} />
-                : <div style={{ width: 200, height: 200, background: "var(--surface-2, #eee)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--muted)" }}>Generating…</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {qrToken
+                ? (
+                  <a
+                    href={qrToken}
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      padding: "12px 0",
+                      borderRadius: 10,
+                      background: "var(--accent, #2ea6ff)",
+                      color: "#fff",
+                      fontWeight: 600,
+                      fontSize: 15,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open in Telegram
+                  </a>
+                )
+                : <div style={{ height: 44, background: "var(--surface2, #1a2337)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--muted)" }}>Generating…</div>
               }
               <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
-                Open Telegram → Settings → Devices → Link Desktop Device, then scan this code.
+                Tap the button above to open Telegram on this device and confirm the login.
               </div>
-              <button className="btn-ghost btn-sm" type="button" onClick={() => { stopQrPoll(); setQrStep("idle"); setQrDataUrl(null); }}>
+              {qrDataUrl && (
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ fontSize: 12, color: "var(--fg-muted, #888)", cursor: "pointer", userSelect: "none" }}>
+                    Or scan with another device
+                  </summary>
+                  <div style={{ marginTop: 8 }}>
+                    <img src={qrDataUrl} alt="Telegram QR login" style={{ width: 180, height: 180, borderRadius: 8, display: "block" }} />
+                    <div style={{ fontSize: 12, color: "var(--fg-muted, #888)", marginTop: 6 }}>
+                      Telegram → Settings → Devices → Link Desktop Device
+                    </div>
+                  </div>
+                </details>
+              )}
+              <button className="btn-ghost btn-sm" type="button" onClick={() => { stopQrPoll(); setQrStep("idle"); setQrDataUrl(null); setQrToken(""); }}>
                 Cancel
               </button>
             </div>
