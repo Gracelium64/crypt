@@ -202,7 +202,7 @@ function AppContent() {
         // 2. Try fetching from server, decrypting with login password (new device / cleared storage)
         const serverJwk = await fetchAndDecryptPrivateKey(auth.token, password);
         if (serverJwk) {
-          const serverPubResp = await fetch(`/api/keys/${encodeURIComponent(email)}`).catch(() => null);
+          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(email)}`).catch(() => null);
           if (serverPubResp?.ok) {
             const kj = await serverPubResp.json().catch(() => null);
             const serverPub: string | null = kj?.data?.publicKey ?? null;
@@ -249,7 +249,7 @@ function AppContent() {
           try {
             const ownerId = msg.direction === "inbound" ? msg.from : msg.to;
             if (!ownerId) return msg;
-            const kresp = await fetch(`/api/keys/${encodeURIComponent(ownerId)}`);
+            const kresp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`);
             if (!kresp.ok) return msg;
             const kj = await kresp.json();
             const theirPub = kj?.data?.publicKey;
