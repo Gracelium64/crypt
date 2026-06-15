@@ -8,17 +8,17 @@
 
 ## Revised Time Estimate
 
-| Phase | Days (8h/day) | Hours |
-|---|---|---|
-| Backend services (the logic layer) | 1 | 8h |
-| Frontend custom hooks + API layer | 1 | 8h |
-| Cryptography (ECDH + AES-GCM) | 1 | 8h |
-| Telegram MTProto | 1.5 | 12h |
-| Socket.IO realtime | 0.5 | 4h |
-| Media uploads | 0.5 | 4h |
-| Link/pairing system | 0.5 | 4h |
-| UI rework + refinement | 2 | 16h |
-| **Total** | **~8 days** | **~64h** |
+| Phase                              | Days (8h/day) | Hours    |
+| ---------------------------------- | ------------- | -------- |
+| Backend services (the logic layer) | 1             | 8h       |
+| Frontend custom hooks + API layer  | 1             | 8h       |
+| Cryptography (ECDH + AES-GCM)      | 1             | 8h       |
+| Telegram MTProto                   | 1.5           | 12h      |
+| Socket.IO realtime                 | 0.5           | 4h       |
+| Media uploads                      | 0.5           | 4h       |
+| Link/pairing system                | 0.5           | 4h       |
+| UI rework + refinement             | 2             | 16h      |
+| **Total**                          | **~8 days**   | **~64h** |
 
 Rebuild exercises deferred to after 2026-06-24 deadline — see `REBUILD_EXERCISES.md`.
 
@@ -44,28 +44,34 @@ Rebuild exercises deferred to after 2026-06-24 deadline — see `REBUILD_EXERCIS
 **What this module covers:** The five service files — the actual logic layer, not just route wiring.
 
 ### 1. `services/crypto.service.ts` (45 lines) — start here
+
 AES-GCM encrypt/decrypt with a `[CRYPT:v1]` prefix marker.  
 Key question: why does the backend need to encrypt/decrypt if E2E means the server can't read messages?  
-Answer: the backend crypto service handles *transport-layer* encryption for provider payloads (WhatsApp, Telegram bodies), not the *user-to-user* ECDH layer. Two different crypto concerns.
+Answer: the backend crypto service handles _transport-layer_ encryption for provider payloads (WhatsApp, Telegram bodies), not the _user-to-user_ ECDH layer. Two different crypto concerns.
 
 ### 2. `services/realtime.service.ts` (35 lines)
+
 Socket.IO server side. Two functions only: `initRealtime()` and `broadcastMessage()`.  
 Key question: why does `initRealtime` need the HTTP server, not just the Express app?  
 Answer: Socket.IO needs to attach to the raw HTTP server to intercept the WebSocket upgrade handshake — Express alone can't handle protocol upgrades.
 
 ### 3. `services/media.service.ts` (70 lines)
+
 Cloudinary uploads via two paths: Formidable multipart and base64 JSON.  
 Key question: what does Formidable do that `express.json()` can't?  
 Answer: `express.json()` only parses `application/json`. File uploads come as `multipart/form-data` — a completely different encoding that requires a dedicated parser.
 
 ### 4. `services/providers.service.ts` (175 lines) — the normalization layer
+
 This is the most architecturally important service. It receives raw events from Telegram's Bot API webhook and WhatsApp, then normalizes them into the app's internal `Message` schema.  
 Read with this question in mind: "What would break if I added a third provider (e.g. Signal)? What would I need to add here?"
 
 ### 5. `services/telegram-mtproto.service.ts` (280 lines) — save for Module 6
+
 Skip for now. Covered in depth in Module 6.
 
 ### End-of-module question:
+
 Draw the data flow from "Telegram Bot API webhook fires" to "React frontend shows the message." Name every function call in order.
 
 ---
@@ -75,6 +81,7 @@ Draw the data flow from "Telegram Bot API webhook fires" to "React frontend show
 **What this module covers:** The hooks and service layer — the parts you haven't looked at deeply yet.
 
 ### The API layer first (foundation for everything else)
+
 `lib/api.ts` (28 lines) — one function: `apiCall()`. Read this before touching any hook.  
 `lib/constants.ts` — where `VITE_API_BASE_URL` is pulled from.  
 `services/messages.ts` — message CRUD using `apiCall()`  
@@ -83,18 +90,16 @@ Draw the data flow from "Telegram Bot API webhook fires" to "React frontend show
 ### Custom hooks (read in complexity order)
 
 **Simple ones — warm up:**
+
 1. `hooks/useProviders.ts` (19 lines) — just fetches provider list, minimal state
 2. `hooks/useConnections.ts` (64 lines) — fetches connected accounts, exposes connect/disconnect
 
-**Medium complexity:**
-3. `hooks/useSend.ts` (61 lines) — encapsulates the send flow: encrypt → POST → optimistic update
-4. `hooks/useConversations.ts` (160 lines) — groups messages into threads, most interesting data transformation
-5. `hooks/useRealtime.ts` (34 lines) — Socket.IO client (covered more in Module 7)
+**Medium complexity:** 3. `hooks/useSend.ts` (61 lines) — encapsulates the send flow: encrypt → POST → optimistic update 4. `hooks/useConversations.ts` (160 lines) — groups messages into threads, most interesting data transformation 5. `hooks/useRealtime.ts` (34 lines) — Socket.IO client (covered more in Module 7)
 
-**Most complex:**
-6. `hooks/useLink.ts` (199 lines) — a state machine for the QR pairing flow. Read with this framing: it's equivalent to a multi-step Flutter form with async validation at each step.
+**Most complex:** 6. `hooks/useLink.ts` (199 lines) — a state machine for the QR pairing flow. Read with this framing: it's equivalent to a multi-step Flutter form with async validation at each step.
 
 **For each hook, answer:**
+
 - What `useState` variables does it hold?
 - What side effects does it run (`useEffect`)?
 - What does it return to the component that calls it?
@@ -107,35 +112,41 @@ Draw the data flow from "Telegram Bot API webhook fires" to "React frontend show
 **This is the most technically dense module. Go slowly.**
 
 ### Concept first: ECDH key exchange (the "paint mixing" analogy)
-Imagine two people agree on a starting color (public). Each picks a secret color only they know. They each mix their secret color with the shared starting color and share the result publicly. Both then mix their secret color with the *other person's* result. Both end up with the same final color — but no observer can reconstruct it without knowing a secret color.
+
+Imagine two people agree on a starting color (public). Each picks a secret color only they know. They each mix their secret color with the shared starting color and share the result publicly. Both then mix their secret color with the _other person's_ result. Both end up with the same final color — but no observer can reconstruct it without knowing a secret color.
 
 In code:
+
 - "secret color" = private key (never leaves the browser)
 - "mixed result you share" = public key (stored on server, anyone can see it)
 - "final color both arrive at" = derived shared secret (used as AES key)
 
 ### Files (read in this order):
+
 1. `frontendReactJs/src/lib/crypto.test.ts` — read the tests FIRST. They are the clearest documentation of what the functions do and how they chain together.
 2. `frontendReactJs/src/lib/crypto.ts` (171 lines) — implement against the tests mentally
 3. `backend/src/services/crypto.service.ts` (45 lines) — the backend half
 
 ### Functions in `crypto.ts` to understand deeply:
-| Function | What it does |
-|---|---|
-| `arrayBufferToBase64` / `base64ToArrayBuffer` | Convert between raw bytes and storable strings |
-| `fingerprintFromPubKey` | SHA-256 hash of a public key → human-readable hex pairs (shown in UI) |
-| `importPublicKeyFromBase64` | Reconstruct a CryptoKey object from a stored base64 string |
-| `importPrivateJwkKey` | Reconstruct a private CryptoKey from a stored JWK object |
+
+| Function                                      | What it does                                                          |
+| --------------------------------------------- | --------------------------------------------------------------------- |
+| `arrayBufferToBase64` / `base64ToArrayBuffer` | Convert between raw bytes and storable strings                        |
+| `fingerprintFromPubKey`                       | SHA-256 hash of a public key → human-readable hex pairs (shown in UI) |
+| `importPublicKeyFromBase64`                   | Reconstruct a CryptoKey object from a stored base64 string            |
+| `importPrivateJwkKey`                         | Reconstruct a private CryptoKey from a stored JWK object              |
 
 The rest of the file: ECDH `deriveKey()` → use that derived key for AES-GCM `encrypt()` / `decrypt()`.
 
 ### Key architectural insight:
+
 - Private keys: generated in browser, stored in browser (localStorage or IndexedDB), **never sent to server**
 - Public keys: sent to server, stored in DB, shared with other users
 - Server stores: `encryptedText` (AES-GCM ciphertext), public keys — cannot decrypt messages
 - The `[CRYPT:v1]` prefix in `encryptedText` is a version marker so the app can tell if a message is encrypted or plaintext
 
 ### Exercise:
+
 Open `crypto.test.ts`. Before reading the test body, try to write the test yourself for "encrypt then decrypt returns original string." Then compare.
 
 ---
@@ -144,12 +155,12 @@ Open `crypto.test.ts`. Before reading the test body, try to write the test yours
 
 ### Background (read before touching the file)
 
-| Bot API | MTProto API |
-|---|---|
-| Telegram runs a server, you receive webhooks | You ARE a Telegram client |
-| Limited to bot actions | Full user account access |
-| No session persistence needed | Requires a session string to stay connected |
-| `grammy`, `node-telegram-bot-api` | `gramjs` |
+| Bot API                                      | MTProto API                                 |
+| -------------------------------------------- | ------------------------------------------- |
+| Telegram runs a server, you receive webhooks | You ARE a Telegram client                   |
+| Limited to bot actions                       | Full user account access                    |
+| No session persistence needed                | Requires a session string to stay connected |
+| `grammy`, `node-telegram-bot-api`            | `gramjs`                                    |
 
 This project uses **both**: Bot API for the webhook (`providers.service.ts`) AND MTProto for direct Telegram account connections (`telegram-mtproto.service.ts`). They are completely separate integrations.
 
@@ -158,32 +169,38 @@ This project uses **both**: Bot API for the webhook (`providers.service.ts`) AND
 **Read in 4 passes:**
 
 **Pass 1 — data structures (lines 1-22):**
+
 ```
 clients: Map<accountId, TelegramClient>   // live connections
 pendingAuth: Map<accountId, PendingAuth>  // in-progress logins
 ```
+
 Flutter analogy: `clients` is like a `Map<String, StreamController>` — one persistent connection per account.
 
 **Pass 2 — `subscribeToMessages()` (lines 29-~90):**
 This is the event handler for incoming messages on a connected MTProto account. It:
+
 1. Extracts sender ID from the raw Telegram event
 2. Looks up the owner's `ProviderConnection` to get their `providerChatId`
 3. Creates a `Message` document
 4. Calls `broadcastMessage()` to push to frontend via Socket.IO
-Pay attention to how it handles the case where the sender has an active link with the account owner — it tries to decrypt the message if a shared key exists.
+   Pay attention to how it handles the case where the sender has an active link with the account owner — it tries to decrypt the message if a shared key exists.
 
 **Pass 3 — auth flow (the phone number → code → session sequence):**
+
 - `startPhoneAuth(accountId, phoneNumber)` — creates a TelegramClient, calls `sendCode()`, stores `phoneCodeHash` in `pendingAuth`
 - `completePhoneAuth(accountId, code)` — retrieves pending auth, calls `signIn()`, exports session string, saves to `TelegramSession` in DB
 - Why `phoneCodeHash`? Telegram requires you to echo it back when confirming the code — it ties the confirmation to the original request.
 
 **Pass 4 — session restore on startup:**
+
 - `loadAllMTProtoSessions()` — called from `server.ts` bootstrap
 - Reads all `TelegramSession` documents from DB
 - Reconstructs each `TelegramClient` from the saved session string
 - Calls `subscribeToMessages()` for each — so messages arrive even after a server restart
 
 ### Key question:
+
 What happens to messages sent to a connected Telegram account while the server is down? (Answer: they queue in Telegram's servers. When `loadAllMTProtoSessions()` runs on restart, the clients reconnect and receive missed messages.)
 
 ---
@@ -195,7 +212,8 @@ Two things: attach to HTTP server, broadcast to all connected clients.
 No rooms. No socket-level auth. All logged-in browser tabs receive all messages — the frontend filters by account.
 
 **Client side: `hooks/useRealtime.ts` (34 lines)**  
-Flutter analogy: a `StreamSubscription` that you `.cancel()` in `dispose()`.  
+Flutter analogy: a `StreamSubscription` that you `.cancel()` in `dispose()`.
+
 - `useEffect` with empty deps `[]` = runs once on mount = connect
 - return value of `useEffect` = cleanup function = disconnect on unmount
 
@@ -210,10 +228,10 @@ Find `pollingRef`. When the socket emits `disconnect`, a `setInterval` starts po
 
 **`services/media.service.ts` (70 lines) — two upload paths:**
 
-| Path | Content-Type | Use case |
-|---|---|---|
-| Formidable multipart | `multipart/form-data` | Browser `<input type="file">` |
-| Base64 JSON | `application/json` | Programmatic uploads, mobile fallback |
+| Path                 | Content-Type          | Use case                              |
+| -------------------- | --------------------- | ------------------------------------- |
+| Formidable multipart | `multipart/form-data` | Browser `<input type="file">`         |
+| Base64 JSON          | `application/json`    | Programmatic uploads, mobile fallback |
 
 Both paths call the Cloudinary SDK with a buffer and return a URL.
 
@@ -230,10 +248,12 @@ Both paths call the Cloudinary SDK with a buffer and return a URL.
 The most user-facing complex feature: two users pairing to establish an encrypted channel.
 
 **Backend:**
+
 - `models/link.ts` — document: `{ creatorId, claimerId, creatorPubKey, claimerPubKey, code, status }`
 - `routes/link.route.ts` — create link (generates short code), claim link (other user redeems it), check status
 
 **Frontend:**
+
 - `hooks/useLink.ts` (199 lines) — treat this as a state machine. States: `idle → generating → pending → claimed → active`. Map each state to a UI screen in `LinkWizard.tsx`.
 - `components/LinkWizard.tsx` (146 lines) — renders different UI per state
 - `components/FindContact.tsx` (137 lines) — alternative path: find by username instead of QR
@@ -280,6 +300,7 @@ This module covers four bugs found and fixed in a live debugging session. Read e
 **Security property:** The server holds `AES-GCM(PBKDF2(password, salt, 310k), privateKeyJwk)`. A DB dump without the user's password is useless.
 
 **Files changed:**
+
 - `backend/src/models/key.ts` — added `privateKeyJwk: Mixed` field
 - `backend/src/schemas/keys.ts` — added optional `privateKeyJwk: string` to register schema
 - `backend/src/controllers/keys.ts` — added `getMyPrivateKey` endpoint; stale-blob protection in `registerKey` (clears blob when public key changes without a new blob, preventing key mismatch)
@@ -298,12 +319,14 @@ This module covers four bugs found and fixed in a live debugging session. Read e
 **Symptom:** After implementing server-side key sync, keys still differed between devices on every test cycle. The server never retained a working encrypted blob.
 
 **Root cause:** React 18 Strict Mode double-invokes effects to detect side effects. Both invocations of `autoSetupKey` ran concurrently as async functions:
+
 - **1st run:** `consumePassword()` → gets password → network fetch → (awaiting) → generates key K1 → uploads encrypted K1
 - **2nd run:** starts immediately, `consumePassword()` → null (consumed) → no localStorage yet (1st run's async subtlecrypto not done) → falls through to generate key K2 → uploads K2 without an encrypted blob
 
 If the 2nd run's upload completed last, the server ended up with K2's public key and no blob. Every subsequent login fell through to generate yet another fresh key.
 
 **Fix:** Two-part guard:
+
 1. `keySetupInProgress = useRef(false)` — checked at the start of `autoSetupKey`, set to true, cleared in `finally`. The synchronous guard check means the 2nd Strict Mode invocation hits `true` and returns immediately before doing anything.
 2. Early exit when no localStorage key AND no password — this covers the same case with an explicit intent: if we can't decrypt the server blob and can't encrypt a new one, there's nothing useful to do.
 
@@ -330,28 +353,28 @@ A full implementation session: wiring the WhatsApp Cloud API into a working prov
 
 ### Platform architecture lesson: WhatsApp Business API ≠ Telegram
 
-| | Telegram (Bot API) | Telegram (MTProto) | WhatsApp Business API |
-|---|---|---|---|
-| Messages from | Bot account | User's own account | Business phone number |
-| Peer-to-peer possible? | No | Yes | **Never** |
-| Who owns the session | Telegram's servers | Your backend | Meta's servers |
-| Send to arbitrary users | Only if they messaged first | Yes | Only opted-in customers |
+|                         | Telegram (Bot API)          | Telegram (MTProto) | WhatsApp Business API   |
+| ----------------------- | --------------------------- | ------------------ | ----------------------- |
+| Messages from           | Bot account                 | User's own account | Business phone number   |
+| Peer-to-peer possible?  | No                          | Yes                | **Never**               |
+| Who owns the session    | Telegram's servers          | Your backend       | Meta's servers          |
+| Send to arbitrary users | Only if they messaged first | Yes                | Only opted-in customers |
 
 **Key constraint:** Every WhatsApp message in and out flows through the business number. There is no way via the Cloud API to make a message appear from another user's phone. Telegram's MTProto path is architecturally special — WhatsApp has no equivalent.
 
-**Consequence for Crypt:** WhatsApp works as a *delivery pipe*, not a direct channel. Crypt is the actual conversation layer. The fan-out message system (already in `messages.ts`) handles this correctly — both accounts see the conversation in Crypt regardless of what WhatsApp delivers.
+**Consequence for Crypt:** WhatsApp works as a _delivery pipe_, not a direct channel. Crypt is the actual conversation layer. The fan-out message system (already in `messages.ts`) handles this correctly — both accounts see the conversation in Crypt regardless of what WhatsApp delivers.
 
 ---
 
 ### Meta developer setup (what each credential is)
 
-| Env var | Where it comes from | What it does |
-|---|---|---|
-| `WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers → WhatsApp → API Setup | Identifies which phone number your API calls send from |
-| `WHATSAPP_NUMBER` | Same page, the phone number itself | Used to generate WhatsApp deep links (`wa.me/...`) |
-| `WHATSAPP_ACCESS_TOKEN` | Business Portfolio → System Users → Generate Token | Bearer token for all Cloud API calls |
-| `WHATSAPP_APP_SECRET` | Meta for Developers → App Settings → Basic | Used to verify webhook HMAC signatures |
-| `WHATSAPP_VERIFY_TOKEN` | You invent it | Echo'd back during webhook verification handshake |
+| Env var                    | Where it comes from                                | What it does                                           |
+| -------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers → WhatsApp → API Setup         | Identifies which phone number your API calls send from |
+| `WHATSAPP_NUMBER`          | Same page, the phone number itself                 | Used to generate WhatsApp deep links (`wa.me/...`)     |
+| `WHATSAPP_ACCESS_TOKEN`    | Business Portfolio → System Users → Generate Token | Bearer token for all Cloud API calls                   |
+| `WHATSAPP_APP_SECRET`      | Meta for Developers → App Settings → Basic         | Used to verify webhook HMAC signatures                 |
+| `WHATSAPP_VERIFY_TOKEN`    | You invent it                                      | Echo'd back during webhook verification handshake      |
 
 **System User token vs temporary token:** The temporary token on the API Setup page expires every 24h. System User tokens are permanent. For dev/testing the temporary token is fine; production requires a System User.
 
@@ -375,17 +398,19 @@ A full implementation session: wiring the WhatsApp Cloud API into a working prov
 
 **Symptom:** After linking, the Crypt conversation list showed `15556569889` (the Meta business number) as the contact name instead of the other user's name.
 
-**Root cause:** In the LINK handler in `providers.ts`, `providerDisplayName` was set to `change.value.metadata?.display_phone_number` — which is the *business number*, not the sender's name. It was then stored as `displayName` in `ProviderConnection`.
+**Root cause:** In the LINK handler in `providers.ts`, `providerDisplayName` was set to `change.value.metadata?.display_phone_number` — which is the _business number_, not the sender's name. It was then stored as `displayName` in `ProviderConnection`.
 
 **WhatsApp webhook payload structure:**
+
 ```
 change.value.metadata.display_phone_number  → business number ("15556569889")
 change.value.contacts[].profile.name        → sender's WhatsApp display name ("Grace")
-change.value.contacts[].wa_id               → sender's phone number ("4915207005318")
+change.value.contacts[].wa_id               → sender's phone number ("4915200000000")
 msg.from                                    → sender's phone number
 ```
 
-**Fix:** 
+**Fix:**
+
 1. Added `contacts` field to `whatsappInboundSchema`
 2. Resolved `senderDisplayName = contactEntry?.profile?.name ?? senderPhone`
 3. Added `ProviderConnection.updateOne(...)` on every inbound message — self-healing, no migration needed
@@ -397,11 +422,12 @@ msg.from                                    → sender's phone number
 
 ### Bug 3 — Regex crash when searching by phone number
 
-**Symptom:** `Invalid regular expression: /^+4915207005318$/i: Nothing to repeat`
+**Symptom:** `Invalid regular expression: /^+4915200000000$/i: Nothing to repeat`
 
-**Root cause:** `rawUsername` was interpolated directly into `new RegExp('^' + rawUsername + '$')`. The `+` in `+4915207005318` is a regex quantifier — "one or more of nothing" — which is invalid syntax.
+**Root cause:** `rawUsername` was interpolated directly into `new RegExp('^' + rawUsername + '$')`. The `+` in `+4915200000000` is a regex quantifier — "one or more of nothing" — which is invalid syntax.
 
 **Fix:** Escape the input before using it in a regex:
+
 ```ts
 const escaped = rawUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const usernameRegex = new RegExp(`^${escaped}$`, "i");
@@ -414,9 +440,11 @@ const usernameRegex = new RegExp(`^${escaped}$`, "i");
 ### What was built (new files and changes)
 
 **New files:**
+
 - `frontend/src/components/ConnectWhatsApp.tsx` — self-contained link-code flow for WhatsApp, mirrors `ConnectTelegram.tsx`. Uses `useLink` hook internally. Generates a code, shows deep links to open WhatsApp with code pre-filled.
 
 **Modified files:**
+
 - `backend/src/schemas/providers.ts` — added `contacts[].profile.name` and `contacts[].wa_id` to `whatsappInboundSchema`
 - `backend/src/controllers/providers.ts` — fixed display name resolution; added `ProviderConnection` self-heal on every inbound message; added confirmation reply after LINK code processed; imported `sendToProvider`
 - `backend/src/controllers/messages.ts` — added sender prefix `[Name]: message` for plain WhatsApp outbound messages
@@ -460,10 +488,12 @@ A live debugging session: deploying to Render for the first time and systematica
 **Symptom:** Same `npm ci` rejection, but only listing `@esbuild/linux-x64@0.28.0`, `@esbuild/linux-arm@0.28.0`, etc. — all Linux/Windows platform packages missing.
 
 **Root cause (layered):**
+
 1. Render defaults to Node 24, which ships with **npm 11**. The lock file was generated with npm 10 (Node 22). npm 11 changed how it validates optional platform-specific packages in `npm ci` — the v3 lock file format generated by npm 10 is not accepted by npm 11 for optional deps.
 2. A deeper conflict: `vitest@1.0.0` (in devDeps) has a dependency chain that resolves esbuild to `0.21.x`, conflicting with `vite@8`'s requirement for `^0.28.x`. Without forcing the right version, the regenerated lock file had the wrong esbuild.
 
 **Fix (two parts):**
+
 1. Add `frontendReactJs/.node-version` containing `22` — Render reads this and uses Node 22/npm 10 for that service, matching local dev.
 2. Add `"overrides": { "esbuild": "0.28.0" }` to `frontendReactJs/package.json` and `legacy-peer-deps=true` in `frontendReactJs/.npmrc` to force correct resolution despite the vitest conflict.
 
@@ -490,13 +520,16 @@ A live debugging session: deploying to Render for the first time and systematica
 Once types were installed, `tsc` found two bugs:
 
 **Bug A — `providers.ts`: missing `chatId` in `sendToProvider` call**
+
 ```
 Argument of type '{ provider: "whatsapp"; to: string; text: string; attachments: never[]; }'
 is not assignable to parameter of type 'SendPayload'. Property 'chatId' is missing.
 ```
+
 A `sendToProvider` call in the WhatsApp link-confirmation logic was missing the required `chatId` field. For WhatsApp, `chatId` is the sender's phone number — same value as `to`.
 
 **Bug B — `telegram-mtproto.service.ts`: two type mismatches with gramjs**
+
 1. `randomId: BigInt(...)` — native `bigint` primitive vs gramjs's `BigInteger` type (from `big-integer` package). Fix: cast to `any`.
 2. `new Api.auth.LogOut({})` — gramjs constructor takes no arguments, but `{}` (empty object) was passed. Fix: `new Api.auth.LogOut()`.
 
@@ -507,20 +540,24 @@ A `sendToProvider` call in the WhatsApp link-confirmation logic was missing the 
 ### Failure 5 — Runtime crash: `#services/telegram-mtproto.service.js` not defined
 
 **Symptom:** Build succeeded, deployment crashed immediately on startup:
+
 ```
 TypeError [ERR_PACKAGE_IMPORT_NOT_DEFINED]: Package import specifier
 "#services/telegram-mtproto.service.js" is not defined in package.json
 ```
 
 **Root cause:** Node.js's `imports` field in `package.json` is a strict mapping. The project defines:
+
 ```json
 "#services": { "default": "./dist/services/index.js" }
 ```
+
 This maps `#services` → the index file. It does NOT automatically map `#services/realtime.service.js` or any other subpath. Deep imports like `import { initRealtime } from "#services/realtime.service.js"` are undefined and fail at runtime.
 
 Why did this work in development? `tsx` resolves `#` imports by reading the `imports` field but is more lenient with subpaths, falling back to filesystem resolution. Node.js in production is strict.
 
 **Files with deep imports:**
+
 - `server.ts` imported `{ initRealtime }` from `#services/realtime.service.js` and `{ loadAllMTProtoSessions }` from `#services/telegram-mtproto.service.js`
 - `controllers/messages.ts` imported `{ hasActiveClient, sendViaMTProto }` from `#services/telegram-mtproto.service.js`
 
@@ -562,10 +599,13 @@ lightningcss                        (the JS wrapper)
 At install time, npm only downloads the binary for the current platform. On macOS (your machine), it installs `lightningcss-darwin-arm64` and records only that in `package-lock.json`. On Linux (Render), npm CI reads the lock file and finds `lightningcss-linux-x64-gnu` missing — because it was never in the file.
 
 **The error signature:**
+
 ```
 Error: Cannot find module '../lightningcss.linux-x64-gnu.node'
 ```
+
 or
+
 ```
 Cannot find module '@rolldown/binding-linux-x64-gnu'
 ```
@@ -576,11 +616,11 @@ Pattern: `Cannot find module` + a filename ending in `.node` or containing a pla
 
 ### Vite 8 has three of these packages
 
-| Package | Role | Symptom when Linux binary missing |
-|---------|------|----------------------------------|
-| `esbuild` | JS/TS transpiler | `Missing: @esbuild/linux-x64@0.28.0 from lock file` |
-| `rolldown` | Bundler (replaced rollup) | `Cannot find module '@rolldown/binding-linux-x64-gnu'` |
-| `lightningcss` | CSS minifier | `Cannot find module '../lightningcss.linux-x64-gnu.node'` |
+| Package        | Role                      | Symptom when Linux binary missing                         |
+| -------------- | ------------------------- | --------------------------------------------------------- |
+| `esbuild`      | JS/TS transpiler          | `Missing: @esbuild/linux-x64@0.28.0 from lock file`       |
+| `rolldown`     | Bundler (replaced rollup) | `Cannot find module '@rolldown/binding-linux-x64-gnu'`    |
+| `lightningcss` | CSS minifier              | `Cannot find module '../lightningcss.linux-x64-gnu.node'` |
 
 Each surfaced as a separate deployment failure because each had to be fixed independently.
 
@@ -589,12 +629,15 @@ Each surfaced as a separate deployment failure because each had to be fixed inde
 ### Why the fixes differed per package
 
 **esbuild** — fixed via `overrides`:
+
 ```json
 "overrides": { "esbuild": "0.28.0" }
 ```
+
 This worked because `vitest@1.0.0` was pulling in esbuild@0.21.x (a version conflict). The override forced a fresh resolution at 0.28.0, and npm included all platform binaries in the lock file during that fresh resolution.
 
 **rolldown and lightningcss** — required explicit `optionalDependencies`:
+
 ```json
 "optionalDependencies": {
   "@rolldown/binding-linux-x64-gnu": "1.0.0",
@@ -603,9 +646,11 @@ This worked because `vitest@1.0.0` was pulling in esbuild@0.21.x (a version conf
   "lightningcss-linux-x64-musl": "1.32.0"
 }
 ```
+
 There was no version conflict to force re-resolution — the packages were already at the right version. Adding them to `optionalDependencies` explicitly forces npm to resolve and lock them even on macOS.
 
 **Why both gnu AND musl?**
+
 - `gnu` = standard Linux (Ubuntu, Debian, Render's environment)
 - `musl` = Alpine Linux, used in many Docker images
 
@@ -630,6 +675,7 @@ Adding both means the project builds in either environment without further lock 
 ### Why `-gnu` and not `-musl` in `gnu` suffix?
 
 Linux has two main C standard library implementations:
+
 - **glibc** (GNU C Library) — used in Ubuntu, Debian, RHEL, Render's Ubuntu-based instances
 - **musl** — used in Alpine Linux (common in Docker `node:alpine` images), smaller and more security-focused
 
@@ -659,10 +705,10 @@ This module is in two parts. Part A is the clean deployment guide — what to do
 
 Render has two service types relevant here:
 
-| Type | Used for | What Render does |
-|---|---|---|
-| Web Service | Backend (Express) | Runs a Node process, assigns a port |
-| Static Site | Frontend (Vite) | Runs a build command, serves `dist/` as CDN |
+| Type        | Used for          | What Render does                            |
+| ----------- | ----------------- | ------------------------------------------- |
+| Web Service | Backend (Express) | Runs a Node process, assigns a port         |
+| Static Site | Frontend (Vite)   | Runs a build command, serves `dist/` as CDN |
 
 No Blueprint required. Both are created manually through the Render dashboard.
 
@@ -682,6 +728,7 @@ Why: Render defaults to Node 24 (npm 11). The project was developed with Node 22
 **2. Frontend: force Linux native binaries into the lock file**
 
 In `frontendReactJs/package.json`, add:
+
 ```json
 "overrides": { "esbuild": "0.28.0" },
 "optionalDependencies": {
@@ -723,6 +770,7 @@ Why: `NODE_ENV=production` (set as a Render env var) tells npm to omit devDepend
 **7. Backend: no deep `#services/...` imports**
 
 All imports using package-local aliases must go through the index file:
+
 ```ts
 // Wrong (works in tsx dev, crashes in production Node.js):
 import { initRealtime } from "#services/realtime.service.js";
@@ -753,22 +801,22 @@ Wrap the value: `parseOrigins(raw)` splits on commas, returns a string if there'
 4. Start command: `npm start`
 5. Environment variables:
 
-| Variable | Where to get it |
-|---|---|
-| `MONGODB_URI` | MongoDB Atlas → Connect → Drivers |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `CORS_ORIGIN` | Your frontend Render URL (set after frontend is deployed) |
-| `TELEGRAM_BOT_TOKEN` | @BotFather |
-| `TELEGRAM_WEBHOOK_SECRET` | Any string you invent |
-| `TELEGRAM_API_ID` | my.telegram.org → API Development Tools |
-| `TELEGRAM_API_HASH` | Same page |
-| `WHATSAPP_PHONE_NUMBER_ID` | Meta → WhatsApp → API Setup |
-| `WHATSAPP_NUMBER` | Same page |
-| `WHATSAPP_ACCESS_TOKEN` | Meta → Business Portfolio → System Users |
-| `WHATSAPP_APP_SECRET` | Meta → App Settings → Basic |
-| `WHATSAPP_VERIFY_TOKEN` | Any string you invent |
-| `CLOUDINARY_URL` | Cloudinary dashboard → API Keys |
-| `NODE_ENV` | `production` |
+| Variable                   | Where to get it                                           |
+| -------------------------- | --------------------------------------------------------- |
+| `MONGODB_URI`              | MongoDB Atlas → Connect → Drivers                         |
+| `JWT_SECRET`               | `openssl rand -hex 32`                                    |
+| `CORS_ORIGIN`              | Your frontend Render URL (set after frontend is deployed) |
+| `TELEGRAM_BOT_TOKEN`       | @BotFather                                                |
+| `TELEGRAM_WEBHOOK_SECRET`  | Any string you invent                                     |
+| `TELEGRAM_API_ID`          | my.telegram.org → API Development Tools                   |
+| `TELEGRAM_API_HASH`        | Same page                                                 |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta → WhatsApp → API Setup                               |
+| `WHATSAPP_NUMBER`          | Same page                                                 |
+| `WHATSAPP_ACCESS_TOKEN`    | Meta → Business Portfolio → System Users                  |
+| `WHATSAPP_APP_SECRET`      | Meta → App Settings → Basic                               |
+| `WHATSAPP_VERIFY_TOKEN`    | Any string you invent                                     |
+| `CLOUDINARY_URL`           | Cloudinary dashboard → API Keys                           |
+| `NODE_ENV`                 | `production`                                              |
 
 ---
 
@@ -785,11 +833,13 @@ Wrap the value: `parseOrigins(raw)` splits on commas, returns a string if there'
 #### Post-deployment checklist (do these after both services are live)
 
 1. **Set Telegram webhook to the production URL:**
+
    ```bash
    curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
      -d "url=https://<backend-url>/api/providers/telegram/webhook" \
      -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
    ```
+
    Confirm response: `{"ok":true,"result":true}`.
 
 2. **Update Meta WhatsApp webhook:**
@@ -812,6 +862,7 @@ Wrap the value: `parseOrigins(raw)` splits on commas, returns a string if there'
 **Symptom:** Messages sent from Crypt reached external Telegram users (via CryptBot). Their replies never appeared in the Crypt web app.
 
 **Root cause:** The MTProto send path had an overly strict condition:
+
 ```ts
 if (
   payload.provider === "telegram" &&
@@ -824,6 +875,7 @@ if (
 Because external Telegram users have no `ProviderConnection` in the DB, `recipientAccountId` was always undefined → condition never true → bot was used for every send. When the external user replied to the bot, the webhook had no `ProviderConnection` mapped to their Telegram ID → `accountId` was undefined → message saved with no `accountId` → invisible to every user.
 
 **Fix:** Remove the recipient requirements. If the sender has an active MTProto session, always send directly via Telegram:
+
 ```ts
 if (payload.provider === "telegram" && hasActiveClient(accountId))
 ```
@@ -866,14 +918,14 @@ For the edge case where the recipient IS a Crypt user but without their own MTPr
 
 #### Code cleanup done in this session
 
-| File | Change |
-|---|---|
-| `frontendReactJs/src/components/KeyManager.tsx` | Removed QR code display and `qrDataUrl` prop — redundant since key handshake is backend-mediated |
-| `frontendReactJs/src/pages/SettingsPage.tsx` | Removed `qrDataUrl` prop (cascading from KeyManager) |
-| `frontendReactJs/src/App.tsx` | Removed `qrDataUrl` state, `setQrDataUrl` calls, prop passing |
-| `frontendReactJs/src/components/ConnectWhatsApp.tsx` | Removed "Open WhatsApp app" button; kept and renamed "Open WhatsApp web" |
+| File                                                 | Change                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontendReactJs/src/components/KeyManager.tsx`      | Removed QR code display and `qrDataUrl` prop — redundant since key handshake is backend-mediated                                                                                                            |
+| `frontendReactJs/src/pages/SettingsPage.tsx`         | Removed `qrDataUrl` prop (cascading from KeyManager)                                                                                                                                                        |
+| `frontendReactJs/src/App.tsx`                        | Removed `qrDataUrl` state, `setQrDataUrl` calls, prop passing                                                                                                                                               |
+| `frontendReactJs/src/components/ConnectWhatsApp.tsx` | Removed "Open WhatsApp app" button; kept and renamed "Open WhatsApp web"                                                                                                                                    |
 | `frontendReactJs/src/components/OnboardingModal.tsx` | Full rewrite: added WhatsApp step, updated Telegram step to mention in-app code, updated key sync step to mention password-based cross-device restore, updated Find to mention WhatsApp phone number search |
-| `backend/src/controllers/messages.ts` | MTProto condition fix (see Bug 1 above) |
+| `backend/src/controllers/messages.ts`                | MTProto condition fix (see Bug 1 above)                                                                                                                                                                     |
 
 ---
 
@@ -893,13 +945,16 @@ For the edge case where the recipient IS a Crypt user but without their own MTPr
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
 
 ### Before touching any component, do a full UI audit:
+
 Run the app. Go through every screen. For each one, note:
+
 1. Anything that looks unfinished or inconsistent
 2. Any user flow that requires more than 2 clicks for a common action
 3. Any loading/error state that shows nothing or crashes
 4. Mobile layout issues (this is a mobile-first app)
 
 ### Areas most likely to need work (based on codebase patterns):
+
 - `OnboardingModal.tsx` — first-run experience, often rushed in development
 - `LinkWizard.tsx` — multi-step flow, high chance of edge case gaps
 - `ChatView.tsx` — the core loop; check scroll-to-bottom behavior, optimistic updates
@@ -907,12 +962,14 @@ Run the app. Go through every screen. For each one, note:
 - `FindPage.tsx` — discovery flow, check empty states
 
 ### Refactor pass for each component:
+
 1. Read the component
 2. Identify: unused props, duplicated JSX, hardcoded strings that should be constants, missing loading/error states
 3. Check: does the component do one thing? If it's doing 3 things, it should be 3 components.
 4. Run and visually verify after each change
 
 ### Session format for UI work:
+
 > "Module 10, reviewing [ComponentName]. Here's what I see: [your notes]. What am I missing?"
 
 Claude will read the component with you and add observations.
@@ -922,9 +979,11 @@ Claude will read the component with you and add observations.
 ## How to Use This Plan with Claude
 
 Start each session:
+
 > "Continue lesson plan, module [N]."
 
 **Interactive format:**
+
 1. Claude opens the file and gives a 3-sentence orientation
 2. Claude asks "what do you think this does?" before explaining
 3. You answer, ask questions, or say "I don't know"
@@ -937,18 +996,18 @@ Start each session:
 
 ## Flutter → Web Analogies
 
-| Flutter | This codebase |
-|---|---|
-| `StatefulWidget` + `setState` | `useState` |
-| `Provider` / `Riverpod` | React Context + `AuthProvider` |
-| `FutureBuilder` | `useEffect` + loading state |
-| `StreamBuilder` | `useRealtime` + Socket.IO |
-| `Navigator.pushNamed` | page state in `App.tsx` |
-| `shared_preferences` | `localStorage` |
-| `dio` / `http` | `fetch()` inside `apiCall()` |
-| `StreamController` | Socket.IO `EventEmitter` |
+| Flutter                        | This codebase                            |
+| ------------------------------ | ---------------------------------------- |
+| `StatefulWidget` + `setState`  | `useState`                               |
+| `Provider` / `Riverpod`        | React Context + `AuthProvider`           |
+| `FutureBuilder`                | `useEffect` + loading state              |
+| `StreamBuilder`                | `useRealtime` + Socket.IO                |
+| `Navigator.pushNamed`          | page state in `App.tsx`                  |
+| `shared_preferences`           | `localStorage`                           |
+| `dio` / `http`                 | `fetch()` inside `apiCall()`             |
+| `StreamController`             | Socket.IO `EventEmitter`                 |
 | Dart `class` with typed fields | TypeScript `interface` / Mongoose schema |
-| `pubspec.yaml` | `package.json` |
+| `pubspec.yaml`                 | `package.json`                           |
 
 ---
 
@@ -979,6 +1038,7 @@ MODULE STATUS:
 ### Module 5 — 2026-06-11
 
 **Corrections given:**
+
 - **ECDH decryption misunderstood:** Described recipient as "dividing" to reverse the shared key. Correction: recipient independently runs ECDH from their own side (`recipientPrivate × senderPublic`) and arrives at the identical shared key. No reversal — independent derivation. Neither side "undoes" anything.
 - **IV unclear:** Thought IV was part of the secret. Correction: IV is a random 12-byte salt stored openly alongside the ciphertext. Its job is ensuring the same message encrypts differently each time. Security comes from the AES key, not the IV.
 - **HKDF unknown:** Correction: ECDH raw output has mathematical structure; AES requires uniformly random bits. HKDF runs the raw bits through SHA-256 to produce proper key material. The `info` field ("crypt-companion v1") is a domain separator — same keypair in a different app produces a different AES key.
@@ -989,6 +1049,7 @@ MODULE STATUS:
 ### Module 3 — 2026-06-11
 
 **Corrections given:**
+
 - **`useCallback` misread:** Described as "limits to one refresh when called." Correction: it stabilises the function reference so React doesn't see a new object on every render. Loop prevention is a consequence of that stability, not a separate feature.
 - **`useMemo` confused with `useCallback`:** Correction: `useCallback` memoizes a **function**, `useMemo` memoizes a **value/object**. Both prevent unnecessary re-renders but for different things.
 - **`useRef` scope too narrow:** Described only as the stale closure fix. Correction: general definition is a mutable box that persists across renders without triggering re-renders when changed. Stale closure fix is one use case; holding DOM references is another.
@@ -999,15 +1060,16 @@ MODULE STATUS:
 
 **Hook reference (confirmed understood):**
 
-| Hook | What it does |
-|---|---|
-| `useCallback(fn, [deps])` | Memoizes a function — returns the same function reference between renders unless a dependency changes. Prevents stale dependency loops when a function is listed in another hook's deps array. |
-| `useMemo(() => value, [deps])` | Memoizes a computed value/object — only recomputes when a dependency changes. Prevents unnecessary re-renders when a hook returns an object that would otherwise be a new reference every render. |
-| `useRef(initial)` | A mutable box (`ref.current`) that persists across renders without triggering a re-render when changed. Use cases: (1) hold a DOM reference, (2) stale closure fix — store a callback in the ref and update it each render so a long-lived closure (e.g. a socket handler) always calls the latest version. |
+| Hook                           | What it does                                                                                                                                                                                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useCallback(fn, [deps])`      | Memoizes a function — returns the same function reference between renders unless a dependency changes. Prevents stale dependency loops when a function is listed in another hook's deps array.                                                                                                              |
+| `useMemo(() => value, [deps])` | Memoizes a computed value/object — only recomputes when a dependency changes. Prevents unnecessary re-renders when a hook returns an object that would otherwise be a new reference every render.                                                                                                           |
+| `useRef(initial)`              | A mutable box (`ref.current`) that persists across renders without triggering a re-render when changed. Use cases: (1) hold a DOM reference, (2) stale closure fix — store a callback in the ref and update it each render so a long-lived closure (e.g. a socket handler) always calls the latest version. |
 
 ### Module 2 — 2026-06-11
 
 **Corrections given:**
+
 - **`realtime.service` misidentified as provider-facing:** Described as "establishes connection to providers." Correction: it establishes Socket.IO connections to **browsers**, not providers. Telegram/WhatsApp are handled by `providers.service` and the MTProto service.
 - **`crypto.service` described as a pipeline step:** Said it "passes messages to `providers.service` or `realtime.service`." Correction: it is a stateless utility that encrypts/decrypts a string and returns the result. Controllers orchestrate all service calls; services do not call each other.
 - **`media.service` omitted from recall:** Missed in the four-service summary. Handles Cloudinary file uploads via two paths (multipart form-data and base64 JSON).
@@ -1020,12 +1082,12 @@ MODULE STATUS:
 
 Based on actual pace (3 modules completed in 1 day vs 3 days estimated) and Claude doing heavy lifting on refactoring:
 
-| Phase | Estimate |
-|---|---|
-| Remaining modules (6, 7, 8, 9) | ~3 days |
-| Refactoring with Claude | ~3 days |
-| Module 10 — UI rework | ~2 days |
-| **Total remaining** | **~8 days** |
+| Phase                          | Estimate    |
+| ------------------------------ | ----------- |
+| Remaining modules (6, 7, 8, 9) | ~3 days     |
+| Refactoring with Claude        | ~3 days     |
+| Module 10 — UI rework          | ~2 days     |
+| **Total remaining**            | **~8 days** |
 
 Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
 
@@ -1040,12 +1102,14 @@ Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
 **Teaching role:** Interactive, not lecture. Ask before explain. Use Flutter analogies. Terse responses.
 
 **Session start protocol:**
+
 1. Ask which module
 2. Ask what she remembers from last session (active recall)
 3. Ask what confused her
 4. Proceed
 
 **Hardest parts:**
+
 - `useMemo` in AuthProvider — "only recalculate context value if deps change, avoids re-rendering every child"
 - MTProto session lifecycle — "it's a logged-in Telegram app that never quits; session string = the saved login"
 - ECDH key derivation — always use paint mixing analogy first, then show code

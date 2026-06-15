@@ -17,7 +17,10 @@ type Props = {
   onStartConversation: (chatId: string, provider: Provider) => void;
 };
 
-export default function FindContact({ provider: initialProvider, onStartConversation }: Props) {
+export default function FindContact({
+  provider: initialProvider,
+  onStartConversation,
+}: Props) {
   const [provider, setProvider] = useState<Provider>(initialProvider);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +61,7 @@ export default function FindContact({ provider: initialProvider, onStartConversa
   };
 
   const placeholder =
-    provider === "telegram" ? "@username" : "phone number e.g. +4915207005318";
+    provider === "telegram" ? "@username" : "phone number e.g. +4915200000000";
 
   return (
     <div className="panel find-contact">
@@ -71,7 +74,12 @@ export default function FindContact({ provider: initialProvider, onStartConversa
             type="button"
             className={provider === p ? "" : "btn-ghost btn-sm"}
             style={{ flex: 1 }}
-            onClick={() => { setProvider(p); setQuery(""); setResult(null); setError(null); }}
+            onClick={() => {
+              setProvider(p);
+              setQuery("");
+              setResult(null);
+              setError(null);
+            }}
           >
             {p === "telegram" ? "✈️ Telegram" : "💬 WhatsApp"}
           </button>
@@ -92,17 +100,19 @@ export default function FindContact({ provider: initialProvider, onStartConversa
         </button>
       </div>
 
-      {error && (
-        <div style={{ marginTop: 8, color: "#c0392b" }}>{error}</div>
-      )}
+      {error && <div style={{ marginTop: 8, color: "#c0392b" }}>{error}</div>}
 
       {result && (
         <div className="contact-result" style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 600, fontSize: 15 }}>
-            {result.username ? `@${result.username}` : result.displayName ?? result.providerChatId}
+            {result.username
+              ? `@${result.username}`
+              : (result.displayName ?? result.providerChatId)}
           </div>
           {result.displayName && result.username && (
-            <div style={{ color: "#666", fontSize: 13 }}>{result.displayName}</div>
+            <div style={{ color: "#666", fontSize: 13 }}>
+              {result.displayName}
+            </div>
           )}
           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
             Chat ID: {result.providerChatId}
