@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 type Props = {
   localOwnerId: string;
   setLocalOwnerId: (v: string) => void;
@@ -6,8 +8,8 @@ type Props = {
   fingerprint: string | null;
   qrDataUrl: string | null;
   keyBusy: boolean;
-  generateKeypair: () => Promise<void>;
-  registerPublicKey: () => Promise<void>;
+  keyError: string | null;
+  generateAndRegisterKeypair: () => Promise<void>;
   setPrivJwk: (v: any) => void;
   authUserEmail?: string | null;
 };
@@ -21,11 +23,20 @@ export default function KeyManager(props: Props) {
     fingerprint,
     qrDataUrl,
     keyBusy,
-    generateKeypair,
-    registerPublicKey,
-    setPrivJwk,
+    keyError,
+    generateAndRegisterKeypair,
     authUserEmail,
   } = props;
+
+  const [confirming, setConfirming] = useState(false);
+
+  const handleClick = () => {
+    if (pubKeyB64) {
+      setConfirming(true);
+    } else {
+      void generateAndRegisterKeypair();
+    }
+  };
 
   return (
     <div className="panel key-manager">
@@ -51,37 +62,34 @@ export default function KeyManager(props: Props) {
       </label>
 
       <div className="key-actions">
-        <button
-          type="button"
-          onClick={() => void generateKeypair()}
-          disabled={keyBusy}
-        >
-          Generate Keypair
-        </button>
-        <button
-          type="button"
-          onClick={() => void registerPublicKey()}
-          disabled={!pubKeyB64}
-        >
-          Register Public Key
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const v = localStorage.getItem(`crypt:priv:${localOwnerId}`);
-            if (!v) return alert("No private key in local storage for this ID");
-            try {
-              const jwk = JSON.parse(v);
-              setPrivJwk(jwk);
-              alert("Loaded private key from local storage");
-            } catch {
-              alert("Failed to load private key");
-            }
-          }}
-        >
-          Load Private Key
-        </button>
+        {confirming ? (
+          <div style={{ fontSize: 13, color: "var(--red, #e53e3e)", marginBottom: 8 }}>
+            This will replace your current keypair. Previous messages will become unreadable.
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => { setConfirming(false); void generateAndRegisterKeypair(); }}
+                disabled={keyBusy}
+              >
+                Generate anyway
+              </button>
+              <button type="button" onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={handleClick} disabled={keyBusy}>
+            Generate New Keypair
+          </button>
+        )}
       </div>
+
+      {keyError && (
+        <div style={{ fontSize: 13, marginTop: 8, color: "var(--red, #e53e3e)" }}>
+          {keyError}
+        </div>
+      )}
 
       {pubKeyB64 && (
         <div className="key-preview">

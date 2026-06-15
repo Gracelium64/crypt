@@ -16,6 +16,8 @@ type Props = {
   cancelLink: () => void;
 };
 
+import { useState } from "react";
+
 export default function LinkWizard(props: Props) {
   const {
     startLink,
@@ -28,6 +30,9 @@ export default function LinkWizard(props: Props) {
     linkBusy,
     cancelLink,
   } = props;
+
+  const [copied, setCopied] = useState(false);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
 
   const isMobileDevice = () =>
     /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
@@ -59,10 +64,11 @@ export default function LinkWizard(props: Props) {
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(`LINK ${linkCode}`);
-                alert("Copied link code to clipboard");
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
               }}
             >
-              Copy
+              {copied ? "Copied!" : "Copy"}
             </button>
             <button onClick={cancelLink}>Close</button>
           </div>
@@ -90,12 +96,13 @@ export default function LinkWizard(props: Props) {
                 <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
                   <button
                     onClick={() => {
+                      setDeepLinkError(null);
                       const preferMobile = isMobileDevice();
                       const toOpen = preferMobile
                         ? (linkDeepMobile ?? linkDeepWeb)
                         : (linkDeepWeb ?? linkDeepMobile);
                       if (!toOpen) {
-                        alert("No deep link available for this provider");
+                        setDeepLinkError("No deep link available for this provider");
                         return;
                       }
                       // tg:// and similar custom schemes need location.href on
@@ -112,12 +119,18 @@ export default function LinkWizard(props: Props) {
                   </button>
                   <button
                     onClick={() => {
+                      setDeepLinkError(null);
                       if (linkDeepWeb) window.open(linkDeepWeb, "_blank");
-                      else alert("No web deep link available");
+                      else setDeepLinkError("No web deep link available");
                     }}
                   >
                     Open web
                   </button>
+                  {deepLinkError && (
+                    <span style={{ fontSize: 12, color: "var(--red, #e53e3e)", alignSelf: "center" }}>
+                      {deepLinkError}
+                    </span>
+                  )}
                   <small style={{ alignSelf: "center", color: "#888" }}>
                     Tip: Mobile devices will open the provider app when
                     available.

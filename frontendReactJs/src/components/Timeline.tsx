@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext } from "../lib/crypto";
 import type { ChatMessage } from "../types";
@@ -9,6 +9,7 @@ type Props = {
   privJwk: any | null;
   localOwnerId: string | null;
   deriveAesGcmKey: (privJwkObj: any, otherPubB64: string) => Promise<CryptoKey>;
+  counterpartName?: string | null;
 };
 
 const toHumanTime = (value: string) =>
@@ -19,8 +20,10 @@ const Timeline: FC<Props> = ({
   privJwk,
   localOwnerId,
   deriveAesGcmKey,
+  counterpartName,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,7 +51,7 @@ const Timeline: FC<Props> = ({
               <div className={`message-row ${message.direction}`}>
                 {message.direction === "inbound" && (
                   <div className="avatar">
-                    {(message.from || "?").charAt(0).toUpperCase()}
+                    {(counterpartName || message.from || "?").charAt(0).toUpperCase()}
                   </div>
                 )}
 
@@ -84,30 +87,30 @@ const Timeline: FC<Props> = ({
                                           ) || "null",
                                         )
                                       : null);
-                                  if (!storedPriv)
-                                    return alert(
-                                      "No private key available to decrypt attachment",
-                                    );
+                                  if (!storedPriv) {
+                                    setAttachError("No private key available to decrypt attachment");
+                                    return;
+                                  }
 
                                   const keyResp = await apiFetch(
                                     `/keys/${encodeURIComponent(ownerId)}`,
                                   );
-                                  if (!keyResp.ok)
-                                    return alert(
-                                      "Could not fetch counterpart public key",
-                                    );
+                                  if (!keyResp.ok) {
+                                    setAttachError("Could not fetch counterpart public key");
+                                    return;
+                                  }
                                   const kjson = await keyResp.json();
                                   const theirPub = kjson?.data?.publicKey;
-                                  if (!theirPub)
-                                    return alert(
-                                      "Counterpart public key missing",
-                                    );
+                                  if (!theirPub) {
+                                    setAttachError("Counterpart public key missing");
+                                    return;
+                                  }
 
                                   const res = await apiFetch(item.url);
-                                  if (!res.ok)
-                                    return alert(
-                                      "Failed to download attachment",
-                                    );
+                                  if (!res.ok) {
+                                    setAttachError("Failed to download attachment");
+                                    return;
+                                  }
                                   const ab = await res.arrayBuffer();
 
                                   // decrypt binary attachment
@@ -145,7 +148,7 @@ const Timeline: FC<Props> = ({
                                   window.open(urlObj, "_blank");
                                 } catch (_err) {
                                   console.error(_err);
-                                  alert("Failed to decrypt/open attachment");
+                                  setAttachError("Failed to decrypt/open attachment");
                                 }
                               }}
                             >
@@ -174,6 +177,15 @@ const Timeline: FC<Props> = ({
             </article>
           );
         })
+      )}
+      {attachError && (
+        <div
+          style={{ color: "var(--red, #e53e3e)", fontSize: 13, padding: "8px 12px", cursor: "pointer" }}
+          onClick={() => setAttachError(null)}
+          role="alert"
+        >
+          {attachError} ✕
+        </div>
       )}
       <div ref={bottomRef} />
     </>
