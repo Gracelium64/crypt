@@ -4,6 +4,7 @@ const keySchema = new mongoose.Schema(
   {
     ownerId: { type: String, required: true, unique: true },
     publicKey: { type: String, required: true },
+    privateKeyJwk: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );

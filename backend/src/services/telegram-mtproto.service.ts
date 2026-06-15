@@ -146,8 +146,9 @@ export async function requestPhoneCode(
     phoneNumber,
   ) as any;
 
-  console.log("[MTProto] sendCode result type:", result?.className ?? typeof result);
   console.log("[MTProto] phoneCodeHash present:", !!result?.phoneCodeHash);
+  console.log("[MTProto] result keys:", Object.keys(result ?? {}));
+  console.log("[MTProto] isCodeViaApp:", result?.isCodeViaApp);
 
   const phoneCodeHash: string = result?.phoneCodeHash ?? "";
   if (!phoneCodeHash) {
@@ -273,8 +274,9 @@ export async function sendViaMTProto(
 export async function disconnectMTProtoSession(accountId: string): Promise<void> {
   const client = clients.get(accountId);
   if (client) {
+    try { await client.invoke(new Api.auth.LogOut({})); } catch { /* ignore */ }
     try { await client.disconnect(); } catch { /* ignore */ }
     clients.delete(accountId);
   }
-  await TelegramSession.findOneAndUpdate({ accountId }, { active: false });
+  await TelegramSession.findOneAndUpdate({ accountId }, { active: false, sessionString: "" });
 }

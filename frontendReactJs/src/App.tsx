@@ -4,7 +4,7 @@ import { useAuth } from "@/context";
 import { apiFetch } from "@/lib/api";
 import { isSecureCiphertext, decryptFromSender } from "@/lib/crypto";
 import { useConversations, useConnections, useProviders, useRealtime, useSend } from "@/hooks";
-import { generateKeypair as generateKeypairService, registerPublicKey as registerPublicKeyService, resolveKeypairDisplay } from "@/services";
+import { generateKeypair as generateKeypairService, registerPublicKey as registerPublicKeyService, fetchAndDecryptPrivateKey, resolveKeypairDisplay } from "@/services";
 import { nukeAccountRequest } from "@/data";
 import { ProtectedLayout } from "@/layouts";
 import { ChatsPage, FindPage, SettingsPage, ChatView } from "@/pages";
@@ -28,6 +28,7 @@ function AppContent() {
   const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
   const [privJwk, setPrivJwk] = useState<unknown>(null);
+  const keySetupInProgress = useRef(false);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
@@ -148,52 +149,78 @@ function AppContent() {
       return;
     }
 
-    const autoSetupKey = async () => {
-      const storedPriv = localStorage.getItem(`crypt:priv:${email}`);
-      const storedPub = localStorage.getItem(`crypt:pub:${email}`);
+    const password = auth.consumePassword();
 
-      if (storedPriv && storedPub) {
-        let jwk: unknown;
-        try { jwk = JSON.parse(storedPriv); } catch { jwk = null; }
-        if (jwk) {
-          const j = jwk as Record<string, unknown>;
-          if (!Array.isArray(j.key_ops) || !(j.key_ops as string[]).includes("deriveBits")) {
-            const patched = { ...j, key_ops: ["deriveKey", "deriveBits"] };
-            localStorage.setItem(`crypt:priv:${email}`, JSON.stringify(patched));
-            jwk = patched;
-          }
-          try {
-            await crypto.subtle.importKey(
-              "jwk", jwk as JsonWebKey,
-              { name: "ECDH", namedCurve: "P-256" },
-              false, ["deriveKey", "deriveBits"],
-            );
-            setPrivJwk(jwk);
-            setPubKeyB64(storedPub);
-            await registerPublicKeyService(storedPub, auth.token);
-            try {
-              const { fingerprint: fp, qrDataUrl: qr } = await resolveKeypairDisplay(email, storedPub);
-              setFingerprint(fp);
-              setQrDataUrl(qr);
-            } catch { /* non-fatal */ }
-            return;
-          } catch {
-            localStorage.removeItem(`crypt:priv:${email}`);
-            localStorage.removeItem(`crypt:pub:${email}`);
+    const tryLoadJwk = async (jwk: unknown, pub: string): Promise<boolean> => {
+      let j = jwk as Record<string, unknown>;
+      if (!Array.isArray(j.key_ops) || !(j.key_ops as string[]).includes("deriveBits")) {
+        j = { ...j, key_ops: ["deriveKey", "deriveBits"] };
+        jwk = j;
+      }
+      try {
+        await crypto.subtle.importKey(
+          "jwk", jwk as JsonWebKey,
+          { name: "ECDH", namedCurve: "P-256" },
+          false, ["deriveKey", "deriveBits"],
+        );
+        setPrivJwk(jwk);
+        setPubKeyB64(pub);
+        localStorage.setItem(`crypt:priv:${email}`, JSON.stringify(jwk));
+        localStorage.setItem(`crypt:pub:${email}`, pub);
+        await registerPublicKeyService(pub, auth.token, jwk, password);
+        try {
+          const { fingerprint: fp, qrDataUrl: qr } = await resolveKeypairDisplay(email, pub);
+          setFingerprint(fp);
+          setQrDataUrl(qr);
+        } catch { /* non-fatal */ }
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const autoSetupKey = async () => {
+      // Guard against Strict Mode double-invocation running concurrently
+      if (keySetupInProgress.current) return;
+      keySetupInProgress.current = true;
+      try {
+        // 1. Try localStorage first (fastest path, already on this device)
+        const storedPriv = localStorage.getItem(`crypt:priv:${email}`);
+        const storedPub = localStorage.getItem(`crypt:pub:${email}`);
+        if (storedPriv && storedPub) {
+          let jwk: unknown;
+          try { jwk = JSON.parse(storedPriv); } catch { jwk = null; }
+          if (jwk && await tryLoadJwk(jwk, storedPub)) return;
+          localStorage.removeItem(`crypt:priv:${email}`);
+          localStorage.removeItem(`crypt:pub:${email}`);
+        }
+
+        // Without a password we can't decrypt the server blob or properly encrypt a new key.
+        // This only happens in the Strict Mode duplicate run — skip it.
+        if (!password) return;
+
+        // 2. Try fetching from server, decrypting with login password (new device / cleared storage)
+        const serverJwk = await fetchAndDecryptPrivateKey(auth.token, password);
+        if (serverJwk) {
+          const serverPubResp = await fetch(`/api/keys/${encodeURIComponent(email)}`).catch(() => null);
+          if (serverPubResp?.ok) {
+            const kj = await serverPubResp.json().catch(() => null);
+            const serverPub: string | null = kj?.data?.publicKey ?? null;
+            if (serverPub && await tryLoadJwk(serverJwk, serverPub)) return;
           }
         }
-      }
 
-      try {
+        // 3. Generate fresh keypair and encrypt onto server
         const r = await generateKeypairService(email);
         setPrivJwk(r.privJwk);
         setPubKeyB64(r.pubB64);
         setFingerprint(r.fingerprint);
         setQrDataUrl(r.qrDataUrl);
-        localStorage.setItem(`crypt:pub:${email}`, r.pubB64);
-        await registerPublicKeyService(r.pubB64, auth.token);
+        await registerPublicKeyService(r.pubB64, auth.token, r.privJwk, password);
       } catch (err) {
         console.error("Auto key setup failed:", err);
+      } finally {
+        keySetupInProgress.current = false;
       }
     };
 
