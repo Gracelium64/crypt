@@ -123,7 +123,11 @@ export async function loadAllMTProtoSessions(): Promise<void> {
 }
 
 export function hasActiveClient(accountId: string): boolean {
-  return clients.has(accountId);
+  const client = clients.get(accountId);
+  // Check both presence AND an active TCP connection. A client that is in the
+  // map but has dropped its Telegram connection would otherwise suppress the
+  // fan-out copy, leaving the recipient with no inbound message in Crypt.
+  return client !== undefined && (client.connected ?? false);
 }
 
 export async function requestPhoneCode(
