@@ -259,7 +259,7 @@ export async function sendViaMTProto(
         new Api.messages.SendMessage({
           peer: await client.getInputEntity(recipientId as any),
           message: text,
-          randomId: BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
+          randomId: BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)) as any,
           noWebpage: true,
         }),
       );
@@ -274,7 +274,7 @@ export async function sendViaMTProto(
 export async function disconnectMTProtoSession(accountId: string): Promise<void> {
   const client = clients.get(accountId);
   if (client) {
-    try { await client.invoke(new Api.auth.LogOut({})); } catch { /* ignore */ }
+    try { await client.invoke(new Api.auth.LogOut()); } catch { /* ignore */ }
     try { await client.disconnect(); } catch { /* ignore */ }
     clients.delete(accountId);
   }

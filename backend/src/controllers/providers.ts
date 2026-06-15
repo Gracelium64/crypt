@@ -297,6 +297,7 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
                 await sendToProvider({
                   provider: "whatsapp",
                   to: String(msg.from),
+                  chatId: String(msg.from),
                   text: "Your WhatsApp account has been linked to Crypt.",
                   attachments: [],
                 });
