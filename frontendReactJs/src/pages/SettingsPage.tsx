@@ -17,7 +17,6 @@ type Props = {
   pubKeyB64: string | null;
   privJwk: unknown;
   fingerprint: string | null;
-  qrDataUrl: string | null;
   keyBusy: boolean;
   keyError: string | null;
   generateAndRegisterKeypair: () => Promise<void>;
@@ -38,7 +37,6 @@ export default function SettingsPage({
   pubKeyB64,
   privJwk,
   fingerprint,
-  qrDataUrl,
   keyBusy,
   keyError,
   generateAndRegisterKeypair,
@@ -80,7 +78,6 @@ export default function SettingsPage({
             pubKeyB64={pubKeyB64}
             privJwk={privJwk}
             fingerprint={fingerprint}
-            qrDataUrl={qrDataUrl}
             keyBusy={keyBusy}
             keyError={keyError}
             generateAndRegisterKeypair={generateAndRegisterKeypair}

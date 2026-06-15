@@ -188,13 +188,13 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
     }).lean();
     const recipientAccountId = recipientConn?.accountId?.toString();
 
+    // For Telegram: use MTProto whenever the sender has an active session.
+    // This means replies from external users come back via Telegram directly
+    // to the sender's MTProto handler (subscribeToMessages), which correctly
+    // attributes them. Bot-only fallback is used for WhatsApp and when no
+    // MTProto session exists.
     let mtprotoSent = false;
-    if (
-      payload.provider === "telegram" &&
-      hasActiveClient(accountId) &&
-      recipientAccountId &&
-      hasActiveClient(recipientAccountId)
-    ) {
+    if (payload.provider === "telegram" && hasActiveClient(accountId)) {
       try {
         const sendFn = await sendViaMTProto(accountId, payload.chatId);
         mtprotoSent = await sendFn(storedText);
@@ -204,6 +204,8 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
     }
 
     if (!mtprotoSent) {
+      // Fallback (WhatsApp, or Telegram without MTProto): fan-out inbound copy
+      // to the recipient if they are also a Crypt user, then send via provider bot.
       if (recipientAccountId && recipientAccountId !== accountId) {
         try {
           const inboundCopy = await Message.create({
@@ -244,6 +246,26 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
         });
       } catch (providerErr) {
         console.error("Failed to forward message to provider:", providerErr);
+      }
+    } else if (recipientAccountId && recipientAccountId !== accountId && !hasActiveClient(recipientAccountId)) {
+      // MTProto succeeded but the recipient is a Crypt user without their own
+      // MTProto session — create an inbound copy so the message appears in their app.
+      try {
+        const inboundCopy = await Message.create({
+          provider: payload.provider,
+          direction: "inbound",
+          accountId: recipientAccountId,
+          from: senderChatId,
+          to: payload.chatId,
+          chatId: senderChatId,
+          deliveryStatus: "sent",
+          encryptedText: storedText,
+          bodyOmitted: false,
+          attachments: payload.attachments,
+        });
+        broadcastMessage(inboundCopy);
+      } catch (fanoutErr) {
+        console.error("Fan-out copy failed:", fanoutErr);
       }
     }
 
