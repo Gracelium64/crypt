@@ -13,7 +13,7 @@ const steps: { title: string; body: string }[] = [
   },
   {
     title: "3 · Connect WhatsApp",
-    body: "Go to Settings → Connect WhatsApp → Generate link code. You'll get a code like \"LINK ABCD1234\". Tap Open WhatsApp to open a chat with the Crypt business number, then send that code. WhatsApp will confirm the link and your account is connected. On iPhone this opens the WhatsApp app directly; on Android use the web link.",
+    body: 'Go to Settings → Connect WhatsApp → Generate link code. You\'ll get a code like "LINK ABCD1234". Tap Open WhatsApp to open a chat with the Crypt business number, then send that code. WhatsApp will confirm the link and your account is connected. On iPhone this opens the WhatsApp app directly; on Android use the web link.',
   },
   {
     title: "4 · Encryption keys",
@@ -45,7 +45,9 @@ export default function OnboardingModal({ onClose }: Props) {
         alignItems: "flex-end",
         justifyContent: "center",
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         style={{
@@ -61,17 +63,35 @@ export default function OnboardingModal({ onClose }: Props) {
         }}
       >
         {/* Header */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "18px 20px 14px",
-          borderBottom: "1px solid var(--border, rgba(255,255,255,0.07))",
-          flexShrink: 0,
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 20px 14px",
+            borderBottom: "1px solid var(--border, rgba(255,255,255,0.07))",
+            flexShrink: 0,
+          }}
+        >
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text, #e2eaf6)" }}>How Crypt works</div>
-            <div style={{ fontSize: 12, color: "var(--text-dim, #94aac4)", marginTop: 2 }}>End-to-end encrypted messaging</div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: "var(--text, #e2eaf6)",
+              }}
+            >
+              How Crypt works
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-dim, #94aac4)",
+                marginTop: 2,
+              }}
+            >
+              End-to-end encrypted messaging
+            </div>
           </div>
           <button
             type="button"
@@ -104,20 +124,24 @@ export default function OnboardingModal({ onClose }: Props) {
                 padding: "14px 16px",
               }}
             >
-              <div style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--accent, #2ea6ff)",
-                marginBottom: 6,
-                letterSpacing: 0.2,
-              }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--accent, #2ea6ff)",
+                  marginBottom: 6,
+                  letterSpacing: 0.2,
+                }}
+              >
                 {step.title}
               </div>
-              <div style={{
-                fontSize: 14,
-                color: "var(--text-dim, #94aac4)",
-                lineHeight: 1.55,
-              }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "var(--text-dim, #94aac4)",
+                  lineHeight: 1.55,
+                }}
+              >
                 {step.body}
               </div>
             </div>
