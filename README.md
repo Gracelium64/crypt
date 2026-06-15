@@ -1,5 +1,5 @@
 # Crypt Companion
-
+ 
 MVP demo stack:
 
 - Backend: Node.js + TypeScript + Express + MongoDB + Socket.IO
