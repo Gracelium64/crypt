@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { Message, ProviderConnection } from "#models";
+import { Message, ProviderConnection, Account } from "#models";
 import { isMarkedCiphertext, broadcastMessage, sendToProvider, hasActiveClient, sendViaMTProto } from "#services";
 import type { SendMessageBody, MessagesQuery, ConversationsQuery } from "#schemas";
 
@@ -186,7 +186,14 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
       providerChatId: payload.chatId,
       active: true,
     }).lean();
-    const recipientAccountId = recipientConn?.accountId?.toString();
+    // Verify the connection points to a real account (guard against ghost connections
+    // left behind by deleted accounts — they share the same providerChatId but their
+    // accountId no longer exists in the accounts collection).
+    let recipientAccountId: string | undefined;
+    if (recipientConn?.accountId) {
+      const accountExists = await Account.exists({ _id: recipientConn.accountId });
+      if (accountExists) recipientAccountId = recipientConn.accountId.toString();
+    }
 
     // For Telegram: use MTProto whenever the sender has an active session.
     // This means replies from external users come back via Telegram directly

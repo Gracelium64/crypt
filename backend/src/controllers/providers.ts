@@ -160,8 +160,12 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
     const ownerConn = await ProviderConnection.findOne({
       provider: "telegram",
       providerChatId: String(msg.chat.id),
+      active: true,
     }).lean();
-    if (ownerConn?.accountId) inboundAccountId = ownerConn.accountId.toString();
+    if (ownerConn?.accountId) {
+      const accountExists = await Account.exists({ _id: ownerConn.accountId });
+      if (accountExists) inboundAccountId = ownerConn.accountId.toString();
+    }
   } catch { /* non-fatal */ }
 
   const created = await Message.create({
