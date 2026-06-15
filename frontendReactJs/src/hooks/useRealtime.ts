@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { apiBase } from "../lib/constants";
 
 export default function useRealtime(onNewMessage: ((m: any) => void) | null) {
   const [isRealtime, setIsRealtime] = useState(false);
@@ -11,7 +12,7 @@ export default function useRealtime(onNewMessage: ((m: any) => void) | null) {
   });
 
   useEffect(() => {
-    const socket: Socket = io();
+    const socket: Socket = io(apiBase);
 
     const onConnect = () => setIsRealtime(true);
     const onDisconnect = () => setIsRealtime(false);
