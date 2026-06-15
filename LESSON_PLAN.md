@@ -322,6 +322,121 @@ If the 2nd run's upload completed last, the server ended up with K2's public key
 
 ---
 
+## Module 12 — WhatsApp Business API Integration (2026-06-15)
+
+A full implementation session: wiring the WhatsApp Cloud API into a working provider. Every change was motivated by a real test failure or constraint. Read as a case study in integrating a third-party messaging API.
+
+---
+
+### Platform architecture lesson: WhatsApp Business API ≠ Telegram
+
+| | Telegram (Bot API) | Telegram (MTProto) | WhatsApp Business API |
+|---|---|---|---|
+| Messages from | Bot account | User's own account | Business phone number |
+| Peer-to-peer possible? | No | Yes | **Never** |
+| Who owns the session | Telegram's servers | Your backend | Meta's servers |
+| Send to arbitrary users | Only if they messaged first | Yes | Only opted-in customers |
+
+**Key constraint:** Every WhatsApp message in and out flows through the business number. There is no way via the Cloud API to make a message appear from another user's phone. Telegram's MTProto path is architecturally special — WhatsApp has no equivalent.
+
+**Consequence for Crypt:** WhatsApp works as a *delivery pipe*, not a direct channel. Crypt is the actual conversation layer. The fan-out message system (already in `messages.ts`) handles this correctly — both accounts see the conversation in Crypt regardless of what WhatsApp delivers.
+
+---
+
+### Meta developer setup (what each credential is)
+
+| Env var | Where it comes from | What it does |
+|---|---|---|
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers → WhatsApp → API Setup | Identifies which phone number your API calls send from |
+| `WHATSAPP_NUMBER` | Same page, the phone number itself | Used to generate WhatsApp deep links (`wa.me/...`) |
+| `WHATSAPP_ACCESS_TOKEN` | Business Portfolio → System Users → Generate Token | Bearer token for all Cloud API calls |
+| `WHATSAPP_APP_SECRET` | Meta for Developers → App Settings → Basic | Used to verify webhook HMAC signatures |
+| `WHATSAPP_VERIFY_TOKEN` | You invent it | Echo'd back during webhook verification handshake |
+
+**System User token vs temporary token:** The temporary token on the API Setup page expires every 24h. System User tokens are permanent. For dev/testing the temporary token is fine; production requires a System User.
+
+**Test recipients:** Meta's test number can only send to explicitly approved phone numbers. Add both test phones in the API Setup "To" dropdown. This limit lifts once the app is published.
+
+---
+
+### Bug 1 — Webhook returning 404 during verification
+
+**Symptom:** Meta's webhook verification hit the callback URL and got 404. Ngrok was running.
+
+**Root cause:** Wrong path. The project mounts providers routes at `/api/providers/...`, not `/api/whatsapp/...`. The actual route is `GET /api/providers/whatsapp/webhook`.
+
+**Diagnosis method:** Read ngrok's HTTP log — it showed `GET /api/whatsapp/webhook 404`. Then `grep` the route files for the actual path.
+
+**Pattern:** Always verify the exact mount path in `server.ts` (`app.use("/api", providersRouter)`) + the route definition (`providersRouter.get("/providers/whatsapp/webhook", ...)`) before configuring external webhooks.
+
+---
+
+### Bug 2 — ProviderConnection storing the business number as the user's display name
+
+**Symptom:** After linking, the Crypt conversation list showed `15556569889` (the Meta business number) as the contact name instead of the other user's name.
+
+**Root cause:** In the LINK handler in `providers.ts`, `providerDisplayName` was set to `change.value.metadata?.display_phone_number` — which is the *business number*, not the sender's name. It was then stored as `displayName` in `ProviderConnection`.
+
+**WhatsApp webhook payload structure:**
+```
+change.value.metadata.display_phone_number  → business number ("15556569889")
+change.value.contacts[].profile.name        → sender's WhatsApp display name ("Grace")
+change.value.contacts[].wa_id               → sender's phone number ("4915200000000")
+msg.from                                    → sender's phone number
+```
+
+**Fix:** 
+1. Added `contacts` field to `whatsappInboundSchema`
+2. Resolved `senderDisplayName = contactEntry?.profile?.name ?? senderPhone`
+3. Added `ProviderConnection.updateOne(...)` on every inbound message — self-healing, no migration needed
+4. Updated the LINK handler to use `senderDisplayName`
+
+**Existing stale data:** Restarting the backend doesn't fix already-stored wrong values. Fix triggers on the next inbound message from that phone. Sending any message from WhatsApp to the bot corrects it immediately.
+
+---
+
+### Bug 3 — Regex crash when searching by phone number
+
+**Symptom:** `Invalid regular expression: /^+4915200000000$/i: Nothing to repeat`
+
+**Root cause:** `rawUsername` was interpolated directly into `new RegExp('^' + rawUsername + '$')`. The `+` in `+4915200000000` is a regex quantifier — "one or more of nothing" — which is invalid syntax.
+
+**Fix:** Escape the input before using it in a regex:
+```ts
+const escaped = rawUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const usernameRegex = new RegExp(`^${escaped}$`, "i");
+```
+
+**Pattern:** Never interpolate user input directly into `new RegExp()`. Always escape first. This is also a ReDoS vector if the input is long and crafted.
+
+---
+
+### What was built (new files and changes)
+
+**New files:**
+- `frontend/src/components/ConnectWhatsApp.tsx` — self-contained link-code flow for WhatsApp, mirrors `ConnectTelegram.tsx`. Uses `useLink` hook internally. Generates a code, shows deep links to open WhatsApp with code pre-filled.
+
+**Modified files:**
+- `backend/src/schemas/providers.ts` — added `contacts[].profile.name` and `contacts[].wa_id` to `whatsappInboundSchema`
+- `backend/src/controllers/providers.ts` — fixed display name resolution; added `ProviderConnection` self-heal on every inbound message; added confirmation reply after LINK code processed; imported `sendToProvider`
+- `backend/src/controllers/messages.ts` — added sender prefix `[Name]: message` for plain WhatsApp outbound messages
+- `backend/src/controllers/providerConnections.ts` — fixed regex injection; added `providerChatId` to WhatsApp search (phone number lookup)
+- `frontend/src/components/FindContact.tsx` — added provider toggle (Telegram/WhatsApp) directly in the Find tab; fixed placeholder text
+- `frontend/src/components/index.ts` — exported `ConnectWhatsApp`
+- `frontend/src/pages/SettingsPage.tsx` — added "Connect WhatsApp" section
+
+---
+
+### Key questions for this module
+
+1. Why can't WhatsApp messages appear as coming from another user's phone number, while Telegram MTProto can send messages that appear from a user's own account?
+2. What does `change.value.metadata.display_phone_number` actually contain, and why was it the wrong field to use for the user's display name?
+3. Why does the `ProviderConnection.updateOne` self-heal approach work without a database migration? What's the trade-off?
+4. What's the difference between escaping a string for use in `new RegExp()` vs escaping it for use in a SQL query? (Same class of bug — injection — different context.)
+5. Why is the sender prefix only added to plain text messages, not encrypted ones?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -401,6 +516,7 @@ MODULE STATUS:
 [ ] Module 9 - Link/pairing system
 [ ] Module 10 - UI rework (pre-deadline)
 [x] Module 11 - Real-world debugging session — completed 2026-06-15
+[x] Module 12 - WhatsApp Business API integration — completed 2026-06-15
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 

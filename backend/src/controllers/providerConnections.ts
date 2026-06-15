@@ -21,10 +21,16 @@ export const searchContact: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const usernameRegex = new RegExp(`^${rawUsername}$`, "i");
+    const escapedUsername = rawUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const usernameRegex = new RegExp(`^${escapedUsername}$`, "i");
+    const normalizedPhone = rawUsername.replace(/[^0-9]/g, "");
+    const orClauses: object[] = [{ username: usernameRegex }, { displayName: usernameRegex }];
+    if (provider === "whatsapp" && normalizedPhone.length >= 7) {
+      orClauses.push({ providerChatId: normalizedPhone });
+    }
     const conn = await ProviderConnection.findOne({
       provider: provider as "telegram" | "whatsapp",
-      $or: [{ username: usernameRegex }, { displayName: usernameRegex }],
+      $or: orClauses,
       active: true,
     }).lean();
 
