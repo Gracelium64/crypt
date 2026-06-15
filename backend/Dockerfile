@@ -2,7 +2,7 @@ FROM node:20-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 COPY src ./src
-RUN npm ci --omit=dev
+RUN npm ci
 RUN npm run build
 
 FROM node:20-slim AS runtime
