@@ -35,6 +35,14 @@ export const whatsappInboundSchema = z.object({
                   }),
                 )
                 .optional(),
+              contacts: z
+                .array(
+                  z.object({
+                    profile: z.object({ name: z.string() }).optional(),
+                    wa_id: z.string(),
+                  }),
+                )
+                .optional(),
               metadata: z
                 .object({ display_phone_number: z.string().optional() })
                 .optional(),

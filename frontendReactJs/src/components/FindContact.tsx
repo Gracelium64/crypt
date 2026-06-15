@@ -17,7 +17,8 @@ type Props = {
   onStartConversation: (chatId: string, provider: Provider) => void;
 };
 
-export default function FindContact({ provider, onStartConversation }: Props) {
+export default function FindContact({ provider: initialProvider, onStartConversation }: Props) {
+  const [provider, setProvider] = useState<Provider>(initialProvider);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ContactResult | null>(null);
@@ -56,17 +57,26 @@ export default function FindContact({ provider, onStartConversation }: Props) {
     }
   };
 
-  const providerLabel = provider === "telegram" ? "Telegram" : "WhatsApp";
   const placeholder =
-    provider === "telegram" ? "@username" : "phone number or username";
+    provider === "telegram" ? "@username" : "phone number e.g. +4915207005318";
 
   return (
     <div className="panel find-contact">
       <h3>Find Contact</h3>
-      <p>
-        Search for another user by their {providerLabel} username. Both of you
-        must have linked your accounts to this app.
-      </p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {(["telegram", "whatsapp"] as Provider[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={provider === p ? "" : "btn-ghost btn-sm"}
+            style={{ flex: 1 }}
+            onClick={() => { setProvider(p); setQuery(""); setResult(null); setError(null); }}
+          >
+            {p === "telegram" ? "✈️ Telegram" : "💬 WhatsApp"}
+          </button>
+        ))}
+      </div>
 
       <div style={{ display: "flex", gap: 8 }}>
         <input

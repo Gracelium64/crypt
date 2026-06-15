@@ -128,7 +128,7 @@
 - [ ] Register a new account via the frontend
 - [ ] Connect Telegram (MTProto phone auth completes)
 - [ ] Send a secure message — verify it appears and decrypts on the other device
-- [ ] Attach an image — verify Cloudinary upload and display
+- [ ] Attach an image — verify Cloudinary upload and display *(optional — file attachments not yet working for WhatsApp; skip for MVP)*
 - [ ] Disconnect and reconnect — verify session restores
 
 ---

@@ -1,6 +1,7 @@
 import { useAuth } from "@/context";
 import KeyManager from "@/components/KeyManager";
 import ConnectTelegram from "@/components/ConnectTelegram";
+import ConnectWhatsApp from "@/components/ConnectWhatsApp";
 import ConnectionsPanel from "@/components/ConnectionsPanel";
 import type { Provider } from "@/types";
 
@@ -94,6 +95,20 @@ export default function SettingsPage({
         <div className="settings-section-title">Connect Telegram</div>
         <div style={{ padding: "4px 16px 12px" }}>
           <ConnectTelegram
+            token={auth.token}
+            onConnected={() => {
+              void loadConnectionsList();
+              onConnectionsRefreshed();
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Connect WhatsApp */}
+      <div className="settings-section">
+        <div className="settings-section-title">Connect WhatsApp</div>
+        <div style={{ padding: "4px 16px 12px" }}>
+          <ConnectWhatsApp
             token={auth.token}
             onConnected={() => {
               void loadConnectionsList();
