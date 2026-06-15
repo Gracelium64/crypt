@@ -28,7 +28,7 @@ export const generateKeypair = async (localOwnerId: string) => {
 
 // PBKDF2-based private key encryption/decryption
 
-async function deriveWrappingKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveWrappingKey(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
