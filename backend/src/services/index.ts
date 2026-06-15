@@ -16,4 +16,7 @@ export {
   verifyPhoneCode,
   sendViaMTProto,
   disconnectMTProtoSession,
+  startQrLogin,
+  getQrLoginStatus,
+  resolveQr2fa,
 } from "./telegram-mtproto.service.js";
