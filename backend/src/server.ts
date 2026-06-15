@@ -15,8 +15,7 @@ import {
   swaggerRouter,
   telegramRouter,
 } from "#routes";
-import { initRealtime } from "#services/realtime.service.js";
-import { loadAllMTProtoSessions } from "#services/telegram-mtproto.service.js";
+import { initRealtime, loadAllMTProtoSessions } from "#services";
 import { notFoundHandler, errorHandler } from "#middleware";
 
 const app = express();
