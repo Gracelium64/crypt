@@ -9,7 +9,7 @@ const steps: { title: string; body: string }[] = [
   },
   {
     title: "2 · Connect Telegram",
-    body: "Go to Settings → Connect Telegram. Enter your phone number and the verification code sent to your Telegram app (look for a message from the official Telegram account — not SMS). This links your real Telegram identity to Crypt via MTProto, so messages go directly between accounts without routing through a bot.",
+    body: "Go to Settings → Connect Telegram. Try Phone code first: enter your number and the code that appears as a message from the official 'Telegram' account in your app. If no code arrives, switch to QR code and tap 'Open in Telegram' — your Telegram app will ask you to confirm the login directly on this device. Either way, messages go directly between accounts without routing through a bot.",
   },
   {
     title: "3 · Connect WhatsApp",
