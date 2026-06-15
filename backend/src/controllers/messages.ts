@@ -226,11 +226,21 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
       }
 
       try {
+        let outboundText = storedText;
+        if (payload.provider === "whatsapp" && !isMarkedCiphertext(storedText)) {
+          const senderConn = await ProviderConnection.findOne({
+            provider: "whatsapp",
+            providerChatId: senderChatId,
+            active: true,
+          }).lean();
+          const senderLabel = senderConn?.displayName ?? senderChatId;
+          outboundText = `[${senderLabel}]: ${storedText}`;
+        }
         await sendToProvider({
           provider: payload.provider,
           chatId: payload.chatId,
           to: payload.to,
-          text: storedText,
+          text: outboundText,
           attachments: payload.attachments,
         });
       } catch (providerErr) {

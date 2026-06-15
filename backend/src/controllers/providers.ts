@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia } from "#services";
+import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider } from "#services";
 import { env } from "#config";
 import { telegramInboundSchema, whatsappInboundSchema } from "#schemas";
 
@@ -240,6 +240,17 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
       const messages = change.value.messages ?? [];
       for (const msg of messages) {
         const incomingRaw = msg.text?.body ?? "";
+        const senderPhone = String(msg.from);
+        const contactEntry = change.value.contacts?.find((c) => c.wa_id === senderPhone);
+        const senderDisplayName = contactEntry?.profile?.name ?? senderPhone;
+
+        // Keep ProviderConnection display name up to date on every inbound message
+        try {
+          await ProviderConnection.updateOne(
+            { provider: "whatsapp", providerChatId: senderPhone, active: true },
+            { $set: { displayName: senderDisplayName } },
+          );
+        } catch { /* non-fatal */ }
 
         try {
           const match = incomingRaw.match(/\bLINK\s+([A-Za-z0-9]{4,12})\b/i);
@@ -253,10 +264,8 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
             });
             if (link) {
               link.completed = true;
-              link.providerChatId = String(msg.from);
-              link.providerDisplayName = String(
-                change.value.metadata?.display_phone_number ?? msg.from ?? "unknown",
-              );
+              link.providerChatId = senderPhone;
+              link.providerDisplayName = senderDisplayName;
               await link.save();
 
               try {
@@ -270,13 +279,29 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
                     await ProviderConnection.create({
                       accountId: link.claimedAccountId,
                       provider: "whatsapp",
-                      providerChatId: String(msg.from),
-                      displayName: link.providerDisplayName,
+                      providerChatId: senderPhone,
+                      displayName: senderDisplayName,
                     });
+                  } else {
+                    await ProviderConnection.updateOne(
+                      { _id: existing._id },
+                      { $set: { displayName: senderDisplayName } },
+                    );
                   }
                 }
               } catch (err) {
                 console.error("Failed to create ProviderConnection:", err);
+              }
+
+              try {
+                await sendToProvider({
+                  provider: "whatsapp",
+                  to: String(msg.from),
+                  text: "Your WhatsApp account has been linked to Crypt.",
+                  attachments: [],
+                });
+              } catch (err) {
+                console.error("Failed to send WhatsApp link confirmation:", err);
               }
             }
           }
