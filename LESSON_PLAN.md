@@ -1557,17 +1557,19 @@ MODULE STATUS:
 [ ] Module 8 - Media uploads
 [ ] Module 9 - Link/pairing system
 [ ] Module 10 - UI rework (pre-deadline)
-[x] Module 11 - Real-world debugging session — completed 2026-06-15
-[x] Module 12 - WhatsApp Business API integration — completed 2026-06-15
-[x] Module 13 - Production deployment debugging — completed 2026-06-15
-[x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
-[x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
-[x] Module 16 - Telegram linking debugging + multi-mode connection UI — completed 2026-06-15
-[x] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — completed 2026-06-15
-[x] Module 18 - ngrok & local webhook tunneling — completed 2026-06-16
-[x] Module 19 - CORS deep dive — completed 2026-06-16
-[x] Module 20 - Docker & containerization (is it needed?) — completed 2026-06-16
-[x] Module 21 - Security & redundancy hardening session — completed 2026-06-16
+[x*] Module 11 - Real-world debugging session — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 12 - WhatsApp Business API integration — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 13 - Production deployment debugging — executed 2026-06-15, SKIM PENDING
+[x*] Module 14 - Frontend deployment: native binary platform packages — executed 2026-06-15, SKIM PENDING
+[x*] Module 15 - Production deployment guide + post-deployment bugs — executed 2026-06-15, SKIM PENDING
+[x*] Module 16 - Telegram linking debugging + multi-mode connection UI — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 18 - ngrok & local webhook tunneling — executed 2026-06-16, SKIM PENDING
+[x*] Module 19 - CORS deep dive — executed 2026-06-16, SKIM PENDING (mostly historical, see Module 21 fix)
+[x*] Module 20 - Docker & containerization (is it needed?) — executed 2026-06-16, SKIM PENDING
+[x*] Module 21 - Security & redundancy hardening session — executed 2026-06-16, CORE REVIEW PENDING
+
+[x*] = work was done by Claude under Grace's supervision and documented, but NOT yet reviewed/understood by Grace. Do not treat as taught until the review pass happens.
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
@@ -1628,6 +1630,29 @@ Based on actual pace (3 modules completed in 1 day vs 3 days estimated) and Clau
 | **Total remaining**            | **~8 days** |
 
 Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
+
+---
+
+## Re-Evaluation (2026-06-16)
+
+**What changed:** 5 days passed since the last estimate. Deadline (2026-06-24) is now **8 days away**, not 13. In that gap, Modules 11-21 happened: WhatsApp integration, production deployment to Render, multiple live debugging sessions, and a full security/redundancy audit. All necessary, none of it was in the original plan.
+
+**Important correction (Grace, 2026-06-16):** Modules 11-21 are marked `[x]` in the tracker because the work was *executed and documented* — by Claude, under Grace's supervision. That is not the same as Grace having reviewed and understood the resulting code, which is the actual goal of this lesson plan. Supervision ≠ comprehension. These modules still need a real pass: read the actual diff/file, answer the "Key questions" section each module already ends with, flag refactor-for-readability candidates.
+
+**Prioritization decision (Grace, 2026-06-16):** Given ~8 days left and a full review of all 11 debugging/deployment modules would take ~4.3 days alone, scope is split:
+
+- **Core review (full depth — touches app logic Grace would actually refactor):** Modules 11, 12, 16, 17, 21
+- **Skim (confirm key takeaways only — infra/deploy plumbing, not app code):** Modules 13, 14, 15, 18, 19, 20 (Module 19/CORS downgraded to skim because Module 21 already fixed the duplicate-`parseOrigins` issue it flagged — largely historical now)
+
+| Group | Est. |
+|---|---|
+| Core review (11, 12, 16, 17, 21 — full depth) | 2.5 days |
+| Skim (13, 14, 15, 18, 19, 20) | 0.6 days |
+| Still-open teaching (6 light pass, 7 recap, 8, 9 synthesis, 10 UI rework) | ~3 days |
+| Refactor backlog (`REFACTOR_NOTES.md`, Claude-led) | ~1.75 days |
+| **Total** | **~7.85 days** |
+
+Against **8 days remaining**. Essentially zero buffer — tighter than the 2026-06-11 estimate, almost entirely because the deadline moved closer during the production work, not because the remaining scope grew much. Module 10 (UI rework) remains the most likely item to overrun, now with no slack left to absorb it if it does.
 
 ---
 
