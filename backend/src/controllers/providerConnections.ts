@@ -82,10 +82,9 @@ export const resolveContact: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const account = await Account.findById(conn.accountId).lean();
     res.status(200).json({
       ok: true,
-      data: { accountId: conn.accountId, email: account?.email ?? null },
+      data: { accountId: conn.accountId ?? null },
     });
   } catch (error) {
     next(error);

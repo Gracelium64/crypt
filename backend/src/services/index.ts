@@ -19,4 +19,5 @@ export {
   startQrLogin,
   getQrLoginStatus,
   resolveQr2fa,
+  joinPersonName,
 } from "./telegram-mtproto.service.js";

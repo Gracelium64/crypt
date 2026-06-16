@@ -5,6 +5,9 @@ import { Account, Key, Link, Message, ProviderConnection, TelegramSession } from
 import { env } from "#config";
 import type { SignupBody, LoginBody } from "#schemas";
 
+const MAX_LOGIN_ATTEMPTS = 8;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 export const register: RequestHandler = async (req, res, next) => {
   const { email, password, displayName } = req.body as SignupBody;
   try {
@@ -33,12 +36,34 @@ export const login: RequestHandler = async (req, res, next) => {
   const { email, password } = req.body as LoginBody;
   try {
     const account = await Account.findOne({ email });
+
+    if (account?.lockedUntil && account.lockedUntil.getTime() > Date.now()) {
+      next(
+        new Error("Account temporarily locked due to repeated failed login attempts. Try again later.", {
+          cause: { status: 423 },
+        }),
+      );
+      return;
+    }
+
     const passwordMatch = account && bcrypt.compareSync(password, account.passwordHash);
 
     if (!account || !passwordMatch) {
+      if (account) {
+        account.failedLoginAttempts = (account.failedLoginAttempts ?? 0) + 1;
+        if (account.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS) {
+          account.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+          account.failedLoginAttempts = 0;
+        }
+        await account.save();
+      }
       next(new Error("Invalid credentials", { cause: { status: 401 } }));
       return;
     }
+
+    account.failedLoginAttempts = 0;
+    account.lockedUntil = null;
+    await account.save();
 
     const token = jwt.sign(
       { accountId: account._id.toString(), email: account.email },

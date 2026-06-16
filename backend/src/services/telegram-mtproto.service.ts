@@ -14,6 +14,16 @@ const API_HASH = env.TELEGRAM_API_HASH ?? "";
 // so we can filter out bot-echoed messages in subscribeToMessages.
 const BOT_USER_ID = env.TELEGRAM_BOT_TOKEN?.split(":")[0] ?? "";
 
+// Shared "first + last name" joining logic for Telegram contacts — used
+// wherever a display name is derived from a Telegram entity/message sender.
+// Each call site still applies its own fallback priority on top of this.
+export function joinPersonName(
+  firstName?: string | null,
+  lastName?: string | null,
+): string | null {
+  return [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+}
+
 // In-memory registry: accountId → connected client
 const clients = new Map<string, TelegramClient>();
 
@@ -74,7 +84,7 @@ function subscribeToMessages(client: TelegramClient, accountId: string): void {
       (async () => {
         try {
           const sender = await client.getEntity(fromId) as any;
-          const displayName = [sender?.firstName, sender?.lastName].filter(Boolean).join(" ").trim() || null;
+          const displayName = joinPersonName(sender?.firstName, sender?.lastName);
           const username: string | null = sender?.username ?? null;
           if (displayName || username) {
             await ProviderConnection.findOneAndUpdate(
@@ -212,7 +222,7 @@ export async function verifyPhoneCode(
     const userId = me?.id?.toString() ?? null;
     const username: string | null = me?.username ?? null;
     const displayName =
-      [me?.firstName, me?.lastName].filter(Boolean).join(" ").trim() ||
+      joinPersonName(me?.firstName, me?.lastName) ||
       username ||
       userId ||
       phoneNumber;
@@ -374,7 +384,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
       const username: string | null = me?.username ?? null;
       const phoneNumber: string = me?.phone ?? "qr-login";
       const displayName =
-        [me?.firstName, me?.lastName].filter(Boolean).join(" ").trim() ||
+        joinPersonName(me?.firstName, me?.lastName) ||
         username || phoneNumber || userId;
 
       await TelegramSession.findOneAndUpdate(

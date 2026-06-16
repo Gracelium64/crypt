@@ -2,7 +2,7 @@ import http from "node:http";
 import cors from "cors";
 import express from "express";
 import "#db";
-import { env } from "#config";
+import { env, parseOrigins } from "#config";
 import {
   messagesRouter,
   providersRouter,
@@ -19,12 +19,6 @@ import { initRealtime, loadAllMTProtoSessions } from "#services";
 import { notFoundHandler, errorHandler } from "#middleware";
 
 const app = express();
-
-const parseOrigins = (raw?: string) => {
-  if (!raw) return undefined;
-  if (raw.trim() === "*") return "*";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
-};
 
 app.use(
   cors({

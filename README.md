@@ -12,6 +12,10 @@ MVP demo stack:
 - `frontendReactNative/`: phase 2 placeholder
 - `frontendFlutter/`: phase 2 placeholder
 - `docs/`: maintainer and learner guides
+- `CRYPT_SPECS.md`: full technical spec (stack, routes, encryption, env vars)
+- `SCALABILITY.md`: current scaling limits and what real production scale requires
+- `AUDIT_CHANGELOG.md`: dated log of security/cleanup changes with restoration notes — check this first when debugging something unexpected
+- `LESSON_PLAN.md`: guided codebase walkthrough
 
 ## Quick Start
 
@@ -19,7 +23,7 @@ MVP demo stack:
 
 ```bash
 cd backend
-cp .env.example .env
+cp env.example .env
 npm install
 npm run dev
 ```
@@ -44,16 +48,18 @@ If needed, set `VITE_API_BASE_URL` in frontend to point to deployed backend.
 Copy the example env into the backend folder before starting the server:
 
 ```bash
-cp .env.example backend/.env
+cp backend/env.example backend/.env
 ```
 
 Key variables in `backend/.env`:
 
 - `MONGODB_URI` — MongoDB connection string (required)
-- `DEMO_ENCRYPTION_KEY` — local master key for encrypting provider secrets (min 32 chars)
+- `JWT_SECRET` — required JWT signing secret, min 32 chars (`openssl rand -hex 32`)
+- `DEMO_ENCRYPTION_KEY` — required, min 32 chars (used by a separate, unrelated server-side AES helper — see `CRYPT_SPECS.md`)
 - `CORS_ORIGIN` — origin for frontend during development (default `http://localhost:5173`)
-- `JWT_SECRET` — optional JWT signing secret for auth flows
 - `SE_CRETS_MASTER_KEY` — optional real master key for AES-GCM secret encryption
+
+Full variable list with required/optional status: `CRYPT_SPECS.md`.
 
 Frontend override (optional):
 
@@ -133,3 +139,6 @@ Implemented now:
 - Ghost-connection guard: ProviderConnection accountId is verified against the accounts collection before fan-out to prevent deleted accounts intercepting messages
 - Key fallback resolution: `getKey` resolves via ProviderConnection → Account → email if a direct lookup misses
 - Deployed to Render (backend Web Service + frontend Static Site)
+- Rate limiting on auth and link/contact-lookup endpoints (`express-rate-limit`)
+- Login lockout after 8 consecutive failed attempts (15-minute lockout)
+- Upload validation: 10MB size cap and a MIME allow-list on plain (unencrypted) attachments — encrypted attachments are exempt since they're ciphertext, not a real file type

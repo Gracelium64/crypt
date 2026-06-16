@@ -15,11 +15,13 @@ type ContactResult = {
 type Props = {
   provider: Provider;
   onStartConversation: (chatId: string, provider: Provider) => void;
+  token: string | null;
 };
 
 export default function FindContact({
   provider: initialProvider,
   onStartConversation,
+  token,
 }: Props) {
   const [provider, setProvider] = useState<Provider>(initialProvider);
   const [query, setQuery] = useState("");
@@ -36,6 +38,8 @@ export default function FindContact({
     try {
       const resp = await apiFetch(
         `/provider/contact/search?provider=${encodeURIComponent(provider)}&username=${encodeURIComponent(username)}`,
+        {},
+        token,
       );
       const j = await resp.json();
       if (!resp.ok) {

@@ -459,6 +459,7 @@ function AppContent() {
               <FindPage
                 provider={provider}
                 onStartConversation={(chatId, contactProvider) => openConversation(chatId, contactProvider)}
+                token={auth.token}
               />
             )}
             {tab === "settings" && (

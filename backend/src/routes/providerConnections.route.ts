@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "#middleware";
+import { authenticate, linkRateLimiter } from "#middleware";
 import {
   getConnections,
   searchContact,
@@ -10,8 +10,8 @@ import {
 const providerConnectionsRouter = Router();
 
 providerConnectionsRouter.get("/provider/connections", authenticate, getConnections);
-providerConnectionsRouter.get("/provider/contact/search", searchContact);
-providerConnectionsRouter.get("/provider/resolve", resolveContact);
+providerConnectionsRouter.get("/provider/contact/search", linkRateLimiter, authenticate, searchContact);
+providerConnectionsRouter.get("/provider/resolve", linkRateLimiter, authenticate, resolveContact);
 providerConnectionsRouter.delete("/provider/connections/:id", authenticate, deleteConnection);
 
 export default providerConnectionsRouter;

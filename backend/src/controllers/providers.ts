@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider } from "#services";
+import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName } from "#services";
 import { env } from "#config";
 import { telegramInboundSchema, whatsappInboundSchema } from "#schemas";
 
@@ -85,7 +85,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
       if (link) {
         const tgUsername = msg.from?.username ?? null;
         const nameFromFields =
-          [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") ||
+          joinPersonName(msg.from?.first_name, msg.from?.last_name) ??
           String(msg.from?.id ?? msg.chat?.id ?? "unknown");
         const tgDisplayName = tgUsername ?? nameFromFields;
 

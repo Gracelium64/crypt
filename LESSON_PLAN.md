@@ -1417,6 +1417,61 @@ You could delete `backend/Dockerfile` today and the live Render deployment would
 
 ---
 
+## Module 21 — Security & Redundancy Hardening Session (2026-06-16)
+
+A full audit-and-fix session: security audit, dead-code audit, scalability writeup, and a spec-accuracy check, followed by implementing the specific fixes approved. Full detail (every file touched, restoration notes) lives in `AUDIT_CHANGELOG.md` — this module covers the *why* and the judgment calls, in the same case-study format as Modules 11-17.
+
+---
+
+### Part A — What the audit found
+
+Two parallel research agents covered security and dead code; direct verification covered scalability and `CRYPT_SPECS.md` drift. Headline findings:
+
+- **Critical:** `GET /provider/resolve` had no auth and leaked a user's email given just their Telegram/WhatsApp chat ID. **Zero rate limiting existed anywhere in the app.**
+- **High:** no login lockout; file uploads had no size/type validation.
+- **Dead code:** an orphaned 335-line component (`TelegramDirectSetup.tsx`), two near-identical `parseOrigins` functions, a display-name-joining snippet duplicated across 4 call sites (not 3 — more on that below), two backend functions with zero callers, one write-only schema field.
+- **Spec drift:** `CRYPT_SPECS.md` was written before WhatsApp shipped and before the server-side key backup shipped — it described both as not-yet-built. Stack versions were wrong across the board (Express 4→5, Mongoose 8→9, React 18→19, Vite 5→8, TypeScript 5→6).
+
+---
+
+### Part B — Why "the obvious fix" wasn't always the right one
+
+This is the part worth studying closely — several fixes that looked simple on paper had a real workflow risk hiding underneath.
+
+**1. Adding `authenticate` to a route isn't free if the frontend doesn't send a token.**
+`FindContact.tsx` called `apiFetch(path)` with no third argument. `apiFetch`'s signature is `(path, options, token?)` — it only attaches `Authorization` if you explicitly pass a token. The Find page is rendered inside `ProtectedLayout`, so it *looked* authenticated, but the actual HTTP call carried no proof of that. Gating the route server-side without fixing the frontend call would have broken Find immediately on deploy. **Pattern:** "this component only renders when logged in" and "this component's network calls are authenticated" are two different claims — verify the second one by reading the actual fetch call, not by checking where the component sits in the tree.
+
+**2. Dead code that touches encryption needs a higher bar of proof than a single grep.**
+The redundancy audit flagged `encryptText`/`decryptMarkedText` (in `backend/src/services/crypto.service.ts`) as unused. Given "the whole point of this app is encryption," that claim got re-verified by enumerating *every* import statement that pulls from the services barrel across the entire backend (9 sites, listed explicitly) rather than trusting one grep for the literal function name — aliased imports (`import { encryptText as foo }`) would dodge a plain-name search. The re-check confirmed it: these two functions were built for a documented-but-never-wired-up "encrypt provider credentials at rest" feature, completely separate from the real E2E message encryption in `frontendReactJs/src/lib/crypto.ts`. Even with that confirmed, the decision was to leave them in place — zero cost to keeping unused code, and this corner of the codebase is exactly where you don't want to be wrong.
+
+**3. "Write-only" doesn't mean "safe to delete" if real data already depends on the shape staying consistent.**
+`Message.providerMessageId` is written in 4 places and read in zero. Normally that's a clean removal. But removing a Mongoose schema field doesn't delete the field from already-stored MongoDB documents — it just stops the app from reading/writing it. Since live test-user data already exists, the field was left in place rather than removed, even though "currently unread" was independently confirmed. The lesson isn't "schema field removal is dangerous" (it isn't — Mongoose schemas aren't migrations), it's that *unread* and *irrelevant* aren't the same thing once real data exists.
+
+**4. Validation can't apply uniformly when one data path is ciphertext.**
+The new upload MIME allow-list could not simply apply to "all uploads" — encrypted attachments are sent as `resourceType: "raw"` and are genuinely indistinguishable from random bytes; you cannot MIME-sniff ciphertext. Before writing the validation, the actual call graph in `frontendReactJs/src/services/messages.ts` was traced end-to-end: the encrypted path always goes through `/uploads/formidable` with `resourceType: "raw"` and *never* falls back to `/uploads/base64`; the plain path never sets `resourceType` at all. That trace is what made it possible to write a validation rule that's airtight by construction (`resourceType !== "raw"` skips the check entirely) rather than "probably fine."
+
+**5. A security default that's correct in general can be wrong for one specific user.**
+The standard advice for login lockout is ~5 attempts. That number assumes a typical single-device user. This account is actively tested across 2 phones and 2 laptops (per ongoing project notes) — a tight lockout threshold would lock out *legitimate* multi-device testing before it ever stopped an attacker. Settled on 8 attempts / 15-minute lockout, and the same reasoning applied to the rate-limit threshold on `/auth/login` (20 req/15min, more generous than a typical API default).
+
+---
+
+### Part C — The "3 sites" that turned out to be 4
+
+The plan going in said the display-name-joining duplication existed at 3 call sites. While implementing it, a 4th turned up: `telegram-mtproto.service.ts`'s phone-auth flow (`completePhoneAuth`) has its *own* `ProviderConnection` auto-create block with the identical join fragment, separate from the QR-login one. It wasn't found during the planning phase because the original grep for the duplicated fragment was run before the QR-login fallback-order context made it obvious there'd be a sibling code path for the other login method. **Pattern:** when you find N copies of duplicated logic via search, treat N as a lower bound until you've checked every code path that does the same *job*, not just every literal string match.
+
+---
+
+### Key questions for this module
+
+1. Why does checking "is this component inside `ProtectedLayout`" not prove its network calls are authenticated? What's the actual mechanism that would prove it?
+2. Why was a single `grep -rn "encryptText"` not sufficient evidence to call a function dead code, even though it happened to be correct in this case?
+3. Mongoose schema field removal vs. data deletion — what's actually true about existing MongoDB documents when you delete a field from a model file?
+4. Why can't the upload MIME allow-list apply to `resourceType: "raw"` uploads? What would happen if you tried to MIME-sniff an AES-GCM ciphertext blob?
+5. The standard advice for login lockout thresholds assumes something about the user's device habits. What does it assume, and why did that assumption not hold here?
+6. When a duplicate-logic search finds 3 matches, why might there be a 4th one that the search missed? What kind of search would have caught it the first time?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -1512,6 +1567,7 @@ MODULE STATUS:
 [x] Module 18 - ngrok & local webhook tunneling — completed 2026-06-16
 [x] Module 19 - CORS deep dive — completed 2026-06-16
 [x] Module 20 - Docker & containerization (is it needed?) — completed 2026-06-16
+[x] Module 21 - Security & redundancy hardening session — completed 2026-06-16
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
