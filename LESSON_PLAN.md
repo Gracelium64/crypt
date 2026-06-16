@@ -1202,6 +1202,221 @@ Changed from `username || userId || phoneNumber` to `username || phoneNumber || 
 
 ---
 
+## Module 18 — ngrok & Local Webhook Tunneling (2026-06-16)
+
+### What ngrok actually is
+
+A reverse-proxy tunnel: it opens an outbound connection from your laptop to ngrok's servers, which then hands you a public HTTPS URL (`https://abc123.ngrok.io`) that forwards any incoming request straight to a port on `localhost`. Your code never changes — it still just listens on `localhost:4000`.
+
+### Why this project ever needed it
+
+Telegram (Bot API) and Meta (WhatsApp Cloud API) deliver events via **webhooks** — they make an outbound HTTP request to a URL you register. That URL must be public HTTPS. During local development your backend only exists at `localhost:4000`, which Telegram's and Meta's servers cannot reach. ngrok bridges exactly that gap: it makes a local server temporarily look like a deployed one.
+
+Documented dev workflow (`docs/MAINTAINER_GUIDE.md`):
+
+```bash
+ngrok http 4000
+# note the https URL returned, e.g. https://abc123.ngrok.io
+npm run set-webhook -- --url https://abc123.ngrok.io/api/providers/telegram/webhook
+```
+
+Same URL also went into Meta's webhook Callback URL field during development.
+
+### Current implementation in deployed production: none
+
+```bash
+grep -rn "ngrok" --include="*.ts" --include="*.json" .   # zero hits outside markdown docs
+```
+
+ngrok appears in exactly three files — `docs/MAINTAINER_GUIDE.md`, `docs/HANDOFF.md`, `PROJECT_ROADMAP.md` — all describing the *local* setup. It is not a dependency, not imported anywhere, not referenced in any deploy config. Render assigns the backend a real, permanent public HTTPS URL the moment it deploys. Per Module 15, both the Telegram webhook and the Meta webhook callback are pointed directly at that Render URL — no tunnel of any kind sits in between in production.
+
+### The same role, played by a different tool, at a different phase
+
+Module 16 Part B already covered this once from the other direction: a Cloudflare tunnel (`cloudflared tunnel --url http://localhost:...`) was used at one point instead of ngrok. Both tools solve the identical problem — "give my local server a public HTTPS face" — and neither one runs your code remotely; the backend logic always executes on whichever machine `localhost` refers to. The moment a *real* deployment exists (Render), the deployed host's own URL takes over that role permanently and the tunnel becomes irrelevant.
+
+### Key architectural insight
+
+ngrok's only job is to simulate "production reachability" without actually deploying. It's a development-loop accelerator, not infrastructure — nothing in the running app depends on it existing, which is why deleting it from your workflow entirely after deploying changes nothing.
+
+### Key questions for this module
+
+1. Why must a webhook URL be public HTTPS, while your own frontend calling your own backend during dev does not need to be?
+2. What is the actual difference between "ngrok forwards to localhost" and "the backend code runs on Render's servers"? Where does the code execute in each case?
+3. If you deleted every ngrok reference from the docs today, would anything in production behave differently? Why or why not?
+4. Module 16 mentioned a Cloudflare tunnel was in use "before Friday." Why didn't switching to Render's datacenter IP matter for the per-phone-number suppression bug, but it would have mattered if the original bug had been an IP-based block?
+
+---
+
+## Module 19 — CORS (2026-06-16)
+
+### What CORS actually is
+
+A restriction enforced by the **browser**, not the server. Same-Origin Policy says JavaScript running on origin A cannot read a response from origin B unless B's server explicitly says "this origin may read my response" via CORS response headers. Origin = scheme + host + port — `https://crypt.onrender.com` and `https://crypt-backend.onrender.com` are different origins even though both are "yours."
+
+**Flutter contrast (useful grounding):** there is no CORS in a Flutter mobile app making HTTP requests — Same-Origin Policy is a browser-only concept. This is the first place in the stack where "because it's a website" actually changes the architecture.
+
+### Why this project needs it at all
+
+Frontend and backend are always on different origins:
+
+| Environment | Frontend origin | Backend origin |
+|---|---|---|
+| Local dev | `http://localhost:5173` | `http://localhost:4000` |
+| Production | `https://<frontend>.onrender.com` | `https://<backend>.onrender.com` |
+
+Without CORS headers from the backend, every `fetch()` call from the frontend would be silently blocked by the browser after the response arrives (the request still hits the server — CORS doesn't stop that — but the browser refuses to hand the response back to your JS).
+
+### Two separate CORS configs in this codebase — and they're not quite the same
+
+**1. REST API — `backend/src/server.ts:29-35`**
+
+```ts
+app.use(
+  cors({
+    origin: parseOrigins(env.CORS_ORIGIN),
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+```
+
+**2. Socket.IO — `backend/src/services/realtime.service.ts:13-19`**
+
+```ts
+io = new Server(server, {
+  cors: {
+    origin: parseOrigins(corsOrigin),
+    methods: ["GET", "POST"],
+  },
+});
+```
+
+**Key question before reading further:** why does Socket.IO need its *own* `cors` block at all, when Express already has one mounted on the same `app`?
+**Answer:** the WebSocket upgrade handshake is a distinct HTTP exchange that bypasses Express's middleware stack entirely (recall Module 2: `initRealtime` attaches directly to the raw `http.Server`, not to `app`). Express's `cors` middleware never sees that request, so Socket.IO has to enforce its own origin check independently.
+
+### Spot the difference — two near-identical helper functions
+
+```ts
+// server.ts
+const parseOrigins = (raw?: string) => {
+  if (!raw) return undefined;
+  if (raw.trim() === "*") return "*";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+};
+
+// realtime.service.ts
+const parseOrigins = (raw: string) => {
+  if (raw.trim() === "*") return "*";
+  const origins = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return origins.length === 1 ? origins[0] : origins;
+};
+```
+
+Both exist to solve Module 15's Failure 8: `CORS_ORIGIN` may hold a comma-separated list (local + production origins together), but the `cors` and `socket.io` libraries each expect either a single string or an array — never a raw comma-separated string. So both functions split on commas. The difference: `realtime.service.ts`'s version collapses a single-entry array back down to a plain string; `server.ts`'s version always returns an array once there's at least one entry. Functionally this rarely matters (both libraries accept either shape for a single origin), but it's duplicated logic with a silent inconsistency — a clean refactor target: extract one shared `parseOrigins` util and import it in both places.
+
+### The preflight request
+
+For any "non-simple" request (anything with a JSON body, or a custom header like `Authorization`), the browser first sends an `OPTIONS` request asking permission *before* sending the real one. The server must answer with matching `Access-Control-Allow-Methods` / `Access-Control-Allow-Headers`. This is why `methods` and `allowedHeaders` are explicit allowlists here — `Authorization` had to be added by hand because the JWT bearer token rides in that header on every authenticated call; without it in `allowedHeaders`, the preflight would reject any request carrying a token.
+
+### Why production CORS broke before (Module 15 cross-reference)
+
+`CORS_ORIGIN` defaults to `http://localhost:5173` (`backend/src/config/env.ts`). The post-deployment checklist in Module 15 explicitly requires setting it to the *exact* frontend Render URL and redeploying the backend — a mismatch here is invisible in server logs (the request succeeds; the browser just refuses to expose the response), which makes it a confusing first production bug to diagnose.
+
+### Wildcard `origin: "*"`
+
+Both `parseOrigins` implementations special-case `"*"` — any origin allowed. This project's auth is Bearer-JWT-in-header, not cookies, so a wildcard origin is less dangerous here than it would be for a cookie-based session (cookies ride along automatically with cross-origin requests; a manually-attached `Authorization` header does not). Still broad — it would let any website's JS make authenticated calls if it could obtain a token some other way.
+
+### Key questions for this module
+
+1. Why does a CORS failure show as a successful network request in the Network tab, but a hard error in the console?
+2. Why does Socket.IO need a second `cors` config instead of inheriting Express's?
+3. What would `parseOrigins` need to do differently if `CORS_ORIGIN` were empty in production? (Trace through both implementations.)
+4. Why is `Authorization` in `allowedHeaders` but not in `methods`? What's the difference between the two lists?
+5. If this app used cookie-based sessions instead of JWT, why would `origin: "*"` become a much more serious vulnerability?
+
+---
+
+## Module 20 — Docker: What It's For, and Is It Actually Needed Here? (2026-06-16)
+
+### What Docker actually is
+
+A way to package an application together with everything below it — runtime, OS libraries, filesystem — minus the kernel, into a portable image that runs identically on any machine with a Docker engine. The promise is "works on my machine" becomes "works on every machine," because the container brings its own machine with it.
+
+### What exists in this repo
+
+Exactly one Dockerfile, backend only — `backend/Dockerfile`:
+
+```dockerfile
+FROM node:20-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json tsconfig.json ./
+COPY src ./src
+RUN npm ci
+RUN npm run build
+
+FROM node:20-slim AS runtime
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+ENV NODE_ENV=production
+EXPOSE 4000
+CMD ["node", "dist/server.js"]
+```
+
+**Multi-stage build, read top to bottom:**
+
+1. **`build` stage** — installs *all* deps (including devDependencies — `tsc`, `@types/*`), compiles TypeScript to `dist/`.
+2. **`runtime` stage** — starts fresh from a clean `node:20-slim`, installs only production deps (`--omit=dev`), then copies *just the compiled output* (`COPY --from=build /app/dist ./dist`) from the first stage. The TypeScript source, dev tooling, and build-time-only packages never make it into the final image.
+
+**Why two stages instead of one:** the final image is smaller and has a reduced attack surface — no compiler, no type definitions, no source code sitting in the production container.
+
+There is no frontend Dockerfile, and there doesn't need to be — the frontend builds to static HTML/JS/CSS (`dist/`), which a static host serves directly. There's no Node runtime to containerize on that side.
+
+### Where Docker is actually invoked in this project
+
+One place: `docs/DEPLOYMENT.md`, a manual local workflow —
+
+```bash
+cd backend
+docker build -t crypt-backend:latest .
+docker run -p 4000:4000 -e MONGODB_URI="..." ... crypt-backend:latest
+```
+
+This is for testing the backend in an isolated container on your own machine. Nothing else in the repo runs `docker build` or `docker run` — no CI step, no deploy script.
+
+### Is it used in the actual deployed production path? No.
+
+Cross-reference Module 15's real Render setup:
+
+> Dashboard → New → **Web Service** → Build command: `npm ci --include=dev && npm run build` → Start command: `npm start`
+
+That's Render's native Node buildpack — it clones the repo, runs your build command directly on Render's own managed Linux image, and starts your process with your start command. It never reads, builds, or runs `backend/Dockerfile`. (Render *does* support a Docker-based service type, which would use the Dockerfile automatically — but this project's service was set up as the Node-native type.)
+
+This also explains why Modules 13-14 are full of npm-buildpack-specific headaches — `.node-version` pinning, `optionalDependencies` for Linux-native binaries, the `npm ci` vs lock-file-version fight. **None of those problems exist inside a Docker build.** Docker pins the OS and Node version explicitly in the `FROM` line; you control the base image yourself, so there's no "Render decided to use Node 24" surprise. That entire category of production bug only happened *because* Docker wasn't the deploy path.
+
+### Verdict: not needed for this project, as currently deployed
+
+You could delete `backend/Dockerfile` today and the live Render deployment would be unaffected — nothing reads it. It is not dead code in the sense of being unreachable; it's an unused alternate path that happens to still work if invoked manually.
+
+**Where it would start to matter:**
+
+- Migrating off Render to a host that requires a container image (Fly.io, AWS ECS/Fargate, Cloud Run, a self-managed VM).
+- Wanting guaranteed build-environment parity locally — building inside the `node:20-slim` container sidesteps the macOS-vs-Linux native-binary problem from Module 14 entirely, since the container always builds on Linux.
+- Adding a second co-located process (a worker, a queue consumer) where `docker-compose` would let you start everything with one command.
+
+**One documentation inconsistency worth flagging (not fixed here, just noted):** `docs/DEPLOYMENT.md` lists "Backend (Docker)" as the *first* section, ahead of "Render / Static deploy" — easy for a future reader to assume Docker is the canonical production path when it's actually unused there. Worth reordering or annotating next time that file is touched.
+
+### Key questions for this module
+
+1. Why does the Dockerfile install `devDependencies` in the `build` stage but `--omit=dev` in the `runtime` stage? What would break if you skipped the multi-stage split and just did everything in one stage?
+2. Module 13's Failure 3 (`@types/express` missing because `NODE_ENV=production` made npm skip devDependencies) — would that bug have been possible inside this Dockerfile? Why or why not?
+3. Why doesn't the frontend need a Dockerfile even though the backend does?
+4. If you switched Render's backend service from "Web Service (Node)" to "Web Service (Docker)" tomorrow, which of Modules 13 and 14's bugs would simply stop being possible, and which would still apply?
+5. Is there any harm in leaving an unused Dockerfile in the repo? Is there harm in deleting it?
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -1294,6 +1509,9 @@ MODULE STATUS:
 [x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
 [x] Module 16 - Telegram linking debugging + multi-mode connection UI — completed 2026-06-15
 [x] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — completed 2026-06-15
+[x] Module 18 - ngrok & local webhook tunneling — completed 2026-06-16
+[x] Module 19 - CORS deep dive — completed 2026-06-16
+[x] Module 20 - Docker & containerization (is it needed?) — completed 2026-06-16
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
