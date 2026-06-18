@@ -1003,6 +1003,7 @@ pendingQr: Map<accountId, PendingQr>  // tracks QR session state per user
 | `startQrLogin(accountId)` | Creates a gramjs client, calls `signInUserWithQrCode` in a background async task, stores current token in `pendingQr`. The `qrCode` callback fires every ~20s with a refreshed token. |
 | `getQrLoginStatus(accountId)` | Returns `{ token, step, error }` for frontend polling. `step` is `qr \| 2fa \| done \| error`. |
 | `resolveQr2fa(accountId, password)` | Resolves the deferred Promise the `password` callback is waiting on, unblocking the auth flow. |
+| `disconnectMTProtoSession(accountId)` | Calls `api.auth.LogOut()` on Telegram's servers before disconnecting the client locally, then clears `sessionString` in the DB. See Module 11 Bug 1 for why server-side logout is required. |
 
 On successful scan: same session-save + `ProviderConnection` upsert + key mirror as the phone flow. Phone number obtained from `client.getMe().phone` (no user input needed).
 
