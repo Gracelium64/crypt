@@ -1,7 +1,8 @@
 # Rebuild Exercises (Post-Deadline)
 
 **Start after:** 2026-06-24 project submission  
-**Goal:** Rebuild the core of this app from memory to confirm full understanding
+**Goal:** Rebuild the core of this app from memory to confirm full understanding  
+**Frontend target:** React Native (not React web — see Phase B below)
 
 ---
 
@@ -20,16 +21,18 @@ Skip MTProto and Cloudinary — those are third-party integrations. Understandin
 
 ---
 
-## Phase B — Frontend Skeleton (Days 3-4, ~16h)
+## Phase B — React Native Frontend Skeleton (Days 3-4, ~16h)
 
-Without looking:
+Without looking. Target: React Native (Expo or bare workflow), not React web.
 
-1. `context/AuthProvider.tsx` — user, token, checkSession, login, register, logout + useMemo on value
-2. `lib/api.ts` — `apiCall(path, options)` with Bearer token from localStorage
-3. A page that lists messages (polls `GET /api/messages` every 10s)
-4. A form that sends a message (`POST /api/messages`)
-5. `hooks/useRealtime.ts` — connect on mount, listen for `message:new`, disconnect on unmount
-6. `layouts/ProtectedLayout.tsx` — redirect to `/auth` if `!signedIn && !checkSession`
+1. `context/AuthProvider.tsx` — user, token, checkSession, login, register, logout + useMemo on value; use `AsyncStorage` instead of `localStorage`
+2. `lib/api.ts` — `apiCall(path, options)` with Bearer token from AsyncStorage; `VITE_API_BASE_URL` equiv is a constant (no Vite env in RN)
+3. A screen that lists messages (polls `GET /api/messages` every 10s using `useEffect` + `setInterval`)
+4. A form/screen that sends a message (`POST /api/messages`)
+5. `hooks/useRealtime.ts` — connect on mount via `socket.io-client`, listen for `message:new`, disconnect on unmount; use `useRef` for the socket so it doesn't trigger re-renders
+6. Protected stack: use React Navigation stack with an auth guard; redirect to auth screen if `!signedIn && !checkSession`
+
+Note: `crypto.subtle` requires a secure context. In React Native, use `expo-crypto` or `react-native-quick-crypto` as the Web Crypto polyfill — the ECDH + AES-GCM logic in `lib/crypto.ts` needs a shim, but the algorithm and key derivation logic is identical.
 
 ---
 

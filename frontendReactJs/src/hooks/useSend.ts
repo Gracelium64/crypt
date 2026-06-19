@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { sendMessageService } from "../services/messages";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 
-export default function useSend(authToken: string | null, convHook: any) {
+interface ConvRefresher {
+  loadConversations?: (provider: string) => Promise<void>;
+  loadMessages?: (
+    provider: string,
+    chatId: string,
+    since?: string,
+    privJwk?: EcdhPrivateJwk | null,
+    localOwnerId?: string | null,
+  ) => Promise<void>;
+}
+
+export default function useSend(authToken: string | null, convHook: ConvRefresher) {
   const [busy, setBusy] = useState(false);
 
   const sendMessage = async (opts: {
@@ -12,7 +24,7 @@ export default function useSend(authToken: string | null, convHook: any) {
     text?: string;
     file?: File | null;
     imageUrl?: string;
-    privJwk?: any | null;
+    privJwk?: EcdhPrivateJwk | null;
     localOwnerId?: string | null;
   }) => {
     setBusy(true);

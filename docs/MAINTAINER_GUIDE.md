@@ -171,12 +171,12 @@ npm run build
 ## Deploying to Render (example)
 
 - Backend: create a new Web Service using the `backend` folder as the deploy path.
-  - Build command: `npm run build`
+  - Build command: `npm ci --include=dev && npm run build` (the `--include=dev` flag is required when `NODE_ENV=production` is set — without it, TypeScript and `@types/*` are omitted and `tsc` fails)
   - Start command: `npm start`
   - Environment: add all required env vars from the reference above.
 
 - Frontend: create a new Static Site (or Web Service) using the `frontendReactJs` folder.
-  - Build command: `npm run build`
+  - Build command: `npm ci --legacy-peer-deps && npm run build`
   - Publish directory: `frontendReactJs/dist`
   - Environment: set `VITE_API_BASE_URL` to your deployed backend URL (e.g. `https://your-backend.onrender.com`)
 

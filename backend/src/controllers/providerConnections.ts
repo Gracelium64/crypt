@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { ProviderConnection, Key, Account } from "#models";
+import { ProviderConnection, Key } from "#models";
 
 export const getConnections: RequestHandler = async (req, res, next) => {
   const accountId = req.account!.accountId;
@@ -40,11 +40,8 @@ export const searchContact: RequestHandler = async (req, res, next) => {
     }
 
     let keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
-    if (!keyRecord) {
-      const account = await Account.findById(conn.accountId).lean();
-      if (account?.email) {
-        keyRecord = await Key.findOne({ ownerId: account.email }).lean();
-      }
+    if (!keyRecord && conn.accountId) {
+      keyRecord = await Key.findOne({ ownerId: conn.accountId.toString() }).lean();
     }
 
     res.status(200).json({

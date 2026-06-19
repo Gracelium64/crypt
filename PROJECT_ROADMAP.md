@@ -1,5 +1,11 @@
 # Crypt Companion Project Roadmap
 
+> **Current project status (as of 2026-06-20):**
+> The app is feature-complete and deployed on Render. All Stage 6 items below that are ✅ were implemented
+> during the project; items marked 🔜 are planned post-deadline.
+> Refactor Pass 1 was completed 2026-06-20 on branch `dev/grace-slop-refactor`.
+> This document remains useful as a learning roadmap — read stages 1-5 to understand the architecture.
+
 ## 1. Project Overview
 
 **Crypt Companion** is a demo messaging app with:
@@ -106,11 +112,11 @@ This repo contains:
 
 ### Stage 6: Extend the project
 
-1. Replace placeholder provider adapters with real Telegram/WhatsApp outbound logic.
-2. Add authentication and authorization middleware.
-3. Add more robust conversation grouping and filtering.
-4. Add test coverage for backend routes and frontend components.
-5. Build a production-ready static frontend deployment.
+1. ✅ Replace placeholder provider adapters with real Telegram/WhatsApp outbound logic (Telegram MTProto + Bot API + WhatsApp Cloud API all live)
+2. ✅ Add authentication and authorization middleware (JWT + `authenticate` middleware on all protected routes; login lockout; rate limiting)
+3. 🔜 Add more robust conversation grouping and filtering
+4. 🔜 Add test coverage for backend routes and frontend components
+5. ✅ Build a production-ready static frontend deployment (deployed on Render as Static Site)
 
 ## 3. File Structure Guide
 

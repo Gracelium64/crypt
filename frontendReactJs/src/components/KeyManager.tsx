@@ -1,15 +1,16 @@
 import { useState } from "react";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 
 type Props = {
   localOwnerId: string;
   setLocalOwnerId: (v: string) => void;
   pubKeyB64: string | null;
-  privJwk: any | null;
+  privJwk: EcdhPrivateJwk | null;
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
   generateAndRegisterKeypair: () => Promise<void>;
-  setPrivJwk: (v: any) => void;
+  setPrivJwk: (v: EcdhPrivateJwk | null) => void;
   authUserEmail?: string | null;
 };
 

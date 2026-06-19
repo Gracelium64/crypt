@@ -283,4 +283,39 @@ npm install @sentry/react @sentry/node
 
 **Implementation order:** Pino first (backend, low effort, high signal), then MongoDB logs collection for business events, then Sentry if user-facing error reporting becomes a priority.
 
+### notFound route — status audit
+
+**Backend:** `notFoundHandler` is implemented and correctly wired.
+- File: `backend/src/middleware/notFoundHandler.ts` — returns `{ ok: false, error: "Not found" }` with HTTP 404
+- Registered in `server.ts`: `app.use("*splat", notFoundHandler)` — correctly positioned after all routes and before the error handler
+- **Status: ✓ Complete. No action needed.**
+
+**Frontend:** No React Router or URL-based routing exists. Navigation is handled via an internal `tab` state in `App.tsx` switching between `"chats"`, `"find"`, and `"settings"`. A 404 route is not applicable to this architecture.
+- **Status: ✓ Not needed. Tab-based routing is intentional.**
+
+---
+
+### CSS refactor — add inline style extraction to existing task
+
+**Finding:** 122 inline `style={}` attributes exist across 14 tsx files, in addition to the monolithic `App.css`.
+
+Affected files: `ConnectTelegram.tsx`, `ConnectWhatsApp.tsx`, `ConnectionsPanel.tsx`, `FindContact.tsx`, `KeyManager.tsx`, `LinkWizard.tsx`, `OnboardingModal.tsx`, `Timeline.tsx`, `AuthPage.tsx`, `ChatView.tsx`, `ChatsPage.tsx`, `SettingsPage.tsx`, `ProtectedLayout.tsx`, `App.tsx` (~30+ instances).
+
+**Extends the existing App.css split task:** In addition to splitting `App.css` into per-page/component stylesheets, all inline `style={}` props must be extracted into their corresponding CSS files. Goal: zero inline styles remaining in tsx after the refactor. CSS class names must be descriptive and component-scoped (e.g. `.nuke-countdown-timer`) to avoid collisions with existing rules.
+
+**Risk mitigation:** Take a screenshot baseline of all pages and UI states before touching any file. Move rules verbatim; verify visually after each component; run `tsc --noEmit` after the full pass.
+
+---
+
+### SwaggerUI — implementation status
+
+**Status: ✓ Fully implemented. No action needed.**
+- File: `backend/src/routes/swagger.route.ts`
+- Routes: `GET /api/docs` (HTML page with Swagger UI), `GET /api/openapi.json` (OpenAPI spec)
+- Method: CDN-based (`unpkg.com/swagger-ui-dist`) — no npm dependency, lightweight
+- Spec file: `backend/openapi.json`
+- Note: CDN requires an internet connection. For offline/air-gapped environments: replace CDN links with a local `swagger-ui-dist` npm install. Not a blocker for current deployment.
+
+---
+
 <!-- Add new findings below this line -->

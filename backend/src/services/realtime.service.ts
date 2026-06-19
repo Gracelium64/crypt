@@ -15,13 +15,18 @@ export const initRealtime = (server: HttpServer, corsOrigin: string) => {
 
   io.on("connection", (socket) => {
     socket.emit("system:status", { message: "realtime connected" });
+    socket.on("join:account", (accountId: string) => {
+      socket.join(`account:${accountId}`);
+    });
   });
 };
 
 export const broadcastMessage = (message: MessageDocument) => {
-  io?.emit("message:new", {
+  const accountId = message.accountId?.toString();
+  if (!accountId) return;
+  io?.to(`account:${accountId}`).emit("message:new", {
     id: message._id.toString(),
-    accountId: message.accountId?.toString(),
+    accountId,
     provider: message.provider,
     direction: message.direction,
     from: message.from,

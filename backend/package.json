@@ -8,6 +8,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "set-webhook": "tsx ./src/scripts/telegram-set-webhook.ts",
+    "backup:keys": "tsx src/scripts/backup-keys-before-migration.ts",
+    "migrate:key-owner-ids": "tsx src/scripts/migrate-key-owner-ids.ts",
+    "rollback:key-migration": "tsx src/scripts/rollback-key-migration.ts",
     "start": "node dist/server.js",
     "test-presign": "node ./scripts/test-presign.js"
   },
@@ -51,6 +54,7 @@
   },
   "dependencies": {
     "bcryptjs": "2.4.3",
+    "file-type": "22.0.1",
     "cloudinary": "1.33.0",
     "cors": "2.8.6",
     "dotenv": "17.4.2",

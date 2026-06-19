@@ -2,13 +2,14 @@ import type { FC } from "react";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage } from "../types";
 
 type Props = {
   messages: ChatMessage[];
-  privJwk: any | null;
+  privJwk: EcdhPrivateJwk | null;
   localOwnerId: string | null;
-  deriveAesGcmKey: (privJwkObj: any, otherPubB64: string) => Promise<CryptoKey>;
+  deriveAesGcmKey: (privJwkObj: EcdhPrivateJwk, otherPubB64: string) => Promise<CryptoKey>;
   counterpartName?: string | null;
 };
 

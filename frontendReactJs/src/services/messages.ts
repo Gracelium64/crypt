@@ -1,5 +1,6 @@
 import { apiFetch, apiJson } from "../lib/api";
 import { encryptFileForRecipient, encryptForRecipient } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 
 type UploadOpts = {
   resourceType?: "image" | "raw" | "auto";
@@ -38,7 +39,7 @@ export type SendMessageOptions = {
   file?: File | null;
   imageUrl?: string;
   authToken?: string | null;
-  privJwk?: any | null;
+  privJwk?: EcdhPrivateJwk | null;
   localOwnerId?: string | null;
 };
 

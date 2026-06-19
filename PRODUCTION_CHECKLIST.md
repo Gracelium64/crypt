@@ -36,7 +36,7 @@
 
 **Service settings:**
 - Root directory: `backend`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --include=dev && npm run build`
 - Start command: `node dist/server.js`
 - Environment: `Node`
 - Instance type: at least Starter (512 MB RAM — gramjs needs headroom)
@@ -73,7 +73,7 @@
 
 **Service settings:**
 - Root directory: `frontendReactJs`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --legacy-peer-deps && npm run build`
 - Publish directory: `frontendReactJs/dist`
 
 **Environment variables:**
@@ -133,9 +133,30 @@
 
 ---
 
+## Pre-Deploy: Run C4 Key Migration (upgrading an existing deployment only)
+
+If upgrading from a pre-refactor backend (not a fresh install), run this **before** deploying the new backend:
+
+```bash
+cd backend
+npm run backup-keys          # creates timestamped JSON backup in scripts/
+npm run migrate:key-owner-ids # rewrites Key.ownerId from email → accountId
+```
+
+After migration, `Key.ownerId` values are accountIds. JWT tokens issued before the migration will be rejected on the new backend — all users must re-login after the deploy.
+
+Skip this section entirely for fresh installs.
+
+---
+
 ## Render Deploy Order
 
-1. Deploy backend first (needs to be running before frontend can proxy API calls in dev, and before webhook registration)
+> **C9 upgrade note:** If deploying a Refactor Pass 1 backend to an existing deployment,
+> deploy the **frontend first**, then the backend. The new backend emits to per-account
+> Socket.IO rooms (`join:account`); the old frontend (without `join:account`) would miss
+> all realtime events until it's also updated.
+
+1. Deploy backend first (fresh installs only — see C9 note above for upgrades)
 2. Note the backend URL
 3. Set `VITE_API_BASE_URL` and deploy frontend
 4. Note the frontend URL, set it as `CORS_ORIGIN` in backend env → redeploy backend

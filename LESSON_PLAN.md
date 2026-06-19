@@ -209,7 +209,7 @@ What happens to messages sent to a connected Telegram account while the server i
 
 **Server side: `services/realtime.service.ts` (35 lines)**  
 Two things: attach to HTTP server, broadcast to all connected clients.  
-No rooms. No socket-level auth. All logged-in browser tabs receive all messages — the frontend filters by account.
+**Refactor Pass 1 (C9, 2026-06-20):** per-account Socket.IO rooms added. Clients emit `join:account` on connect; server emits to `io.to(accountId)` instead of `io.emit()`. No socket-level auth token check (rooms are trusted on the client's own declaration). See `CRYPT_SPECS.md` and `SCALABILITY.md` for details and remaining limitations.
 
 **Client side: `hooks/useRealtime.ts` (34 lines)**  
 Flutter analogy: a `StreamSubscription` that you `.cancel()` in `dispose()`.
@@ -255,7 +255,7 @@ A short-lived token that maps an external provider contact to a Crypt account. F
 - `models/link.ts` — the Link document as above
 - `routes/link.route.ts` — three routes:
   - `POST /provider/link/init` — authenticated, generates code + deep links
-  - `GET /provider/link/status/:code` — public, polls completion
+  - `GET /provider/link/status/:code` — **authenticated** (added C2, 2026-06-20), polls completion
   - `POST /provider/link/complete` — admin-gated (called by CryptBot webhook, not the user directly)
 - `controllers/link.ts` — `initLink`, `getLinkStatus`, `completeLink`
 
@@ -1448,6 +1448,8 @@ This is the part worth studying closely — several fixes that looked simple on 
 
 **2. Dead code that touches encryption needs a higher bar of proof than a single grep.**
 The redundancy audit flagged `encryptText`/`decryptMarkedText` (in `backend/src/services/crypto.service.ts`) as unused. Given "the whole point of this app is encryption," that claim got re-verified by enumerating *every* import statement that pulls from the services barrel across the entire backend (9 sites, listed explicitly) rather than trusting one grep for the literal function name — aliased imports (`import { encryptText as foo }`) would dodge a plain-name search. The re-check confirmed it: these two functions were built for a documented-but-never-wired-up "encrypt provider credentials at rest" feature, completely separate from the real E2E message encryption in `frontendReactJs/src/lib/crypto.ts`. Even with that confirmed, the decision was to leave them in place — zero cost to keeping unused code, and this corner of the codebase is exactly where you don't want to be wrong.
+
+**Refactor Pass 1 update (C1, 2026-06-20):** These functions are no longer dead code. `encryptText` is now called on two write paths in `telegram-mtproto.service.ts` to encrypt Telegram session strings before saving to DB; `decryptMarkedText` is called on session load. The `DEMO_ENCRYPTION_KEY` env var is now required for any MTProto deployment, not just demo scenarios.
 
 **3. "Write-only" doesn't mean "safe to delete" if real data already depends on the shape staying consistent.**
 `Message.providerMessageId` is written in 4 places and read in zero. Normally that's a clean removal. But removing a Mongoose schema field doesn't delete the field from already-stored MongoDB documents — it just stops the app from reading/writing it. Since live test-user data already exists, the field was left in place rather than removed, even though "currently unread" was independently confirmed. The lesson isn't "schema field removal is dangerous" (it isn't — Mongoose schemas aren't migrations), it's that *unread* and *irrelevant* aren't the same thing once real data exists.

@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import formidable, { errors as formidableErrors } from "formidable";
 import fs from "fs/promises";
 import mime from "mime-types";
+import { fileTypeFromBuffer } from "file-type";
 import { uploadBufferToCloudinary } from "#services";
 
 const ALLOWED_RESOURCE_TYPES = new Set(["image", "raw"]);
@@ -44,6 +45,11 @@ export const uploadBase64: RequestHandler = async (req, res, next) => {
     const buffer = Buffer.from(match[2], "base64");
     if (buffer.byteLength > MAX_UPLOAD_BYTES) {
       next(new Error("File too large (max 10MB)", { cause: { status: 400 } }));
+      return;
+    }
+    const detected = await fileTypeFromBuffer(buffer);
+    if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+      next(new Error("File content type not permitted", { cause: { status: 400 } }));
       return;
     }
     const url = await uploadBufferToCloudinary(buffer, "image", "uploads");
@@ -95,6 +101,14 @@ export const uploadFormidable: RequestHandler = (req, res, next) => {
       const buffer = await fs.readFile(filePath);
       const isEncryptedFlag =
         fieldsObj?.encrypted === "1" || fieldsObj?.encrypted === "true";
+
+      if (resourceType !== "raw") {
+        const detected = await fileTypeFromBuffer(buffer);
+        if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+          next(new Error("File content type not permitted", { cause: { status: 400 } }));
+          return;
+        }
+      }
 
       const url = await uploadBufferToCloudinary(buffer, resourceType, "uploads");
       const finalUrl = isEncryptedFlag ? `${url}?crypt=1` : url;

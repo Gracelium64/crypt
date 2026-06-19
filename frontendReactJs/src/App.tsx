@@ -200,7 +200,7 @@ function AppContent() {
         // 2. Try fetching from server, decrypting with login password (new device / cleared storage)
         const serverJwk = await fetchAndDecryptPrivateKey(auth.token, password);
         if (serverJwk) {
-          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(email)}`).catch(() => null);
+          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(auth.user?.id ?? "")}`).catch(() => null);
           if (serverPubResp?.ok) {
             const kj = await serverPubResp.json().catch(() => null);
             const serverPub: string | null = kj?.data?.publicKey ?? null;
@@ -278,7 +278,7 @@ function AppContent() {
     [handleIncomingMessage, privJwk, localOwnerId, loadConversations, convHook.setMessages, auth.user?.id],
   );
 
-  const { isRealtime } = useRealtime(onNewMessage);
+  const { isRealtime } = useRealtime(auth.user?.id ?? null, onNewMessage);
 
   // Catch-up refresh whenever Socket.IO (re)connects — covers messages that
   // arrived while the tab was backgrounded / the connection was dead.

@@ -1,6 +1,6 @@
 # Crypt — Technical Specifications
 
-_Last verified against source: 2026-06-16._
+_Last verified against source: 2026-06-20 (Refactor Pass 1 applied)._
 
 ---
 
@@ -21,6 +21,7 @@ _Last verified against source: 2026-06-16._
 | Media hosting | Cloudinary (`cloudinary` SDK) | 1.33.0 |
 | File parsing | formidable | 3.5.4 |
 | MIME detection | mime-types | 2.1.35 |
+| MIME byte-sniffing | file-type | 22.0.1 |
 | Env validation | Zod | 4.4.3 |
 | Language | TypeScript | 6.0.3 |
 
@@ -56,6 +57,7 @@ All dependencies in both `package.json` files are exact-pinned (no `^`/`~` range
 | `providerconnections` | `ProviderConnection` | Linked provider accounts (provider, providerChatId, displayName) |
 | `telegramsessions` | `TelegramSession` | gramjs MTProto session strings per account |
 | `links` | `Link` | Short-lived bot link codes (TTL, consumed on completion) |
+| `logs` | `Log` | Structured event log (level, event, accountId, context, errorMessage) — written by `logger.service.ts`; instrumented in auth failures, nuke, link completion, key mirror failure, and Telegram session restore failure |
 
 ---
 
@@ -93,7 +95,7 @@ All dependencies in both `package.json` files are exact-pinned (no `^`/`~` range
 `crypto.subtle` requires a secure context (HTTPS or localhost). In development, ngrok or a Cloudflare Tunnel exposes the local server over HTTPS so mobile devices can generate and use keys.
 
 ### Separate, unrelated server-side AES helper
-`backend/src/services/crypto.service.ts` also contains a second, distinct AES-256-GCM helper (key derived from the `DEMO_ENCRYPTION_KEY` env var) used only to detect the `[CRYPT:v1]` marker (`isMarkedCiphertext`). It was originally built for an unfinished "encrypt provider credentials at rest" feature (`encryptText`/`decryptMarkedText`) that was never wired up to a route — those two functions currently have no callers anywhere in the app. This is unrelated to the user-to-user E2E encryption described above.
+`backend/src/services/crypto.service.ts` also contains a second, distinct AES-256-GCM helper (key derived from the `DEMO_ENCRYPTION_KEY` env var) used only to detect the `[CRYPT:v1]` marker (`isMarkedCiphertext`). **Refactor Pass 1 update (C1, 2026-06-20):** `encryptText` and `decryptMarkedText` now have callers — they are used to encrypt/decrypt Telegram MTProto session strings at rest in `TelegramSession` documents. The `DEMO_ENCRYPTION_KEY` env var is therefore required for any deployment that uses MTProto (not just demo purposes). The original "encrypt provider credentials" feature they were written for was never wired up and remains unbuilt, but these functions are no longer dead code. This is unrelated to the user-to-user E2E encryption described above.
 
 ---
 
@@ -125,7 +127,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 - Currently limited to Meta's shared test number with a 5-recipient approval cap pending business verification — see `LESSON_PLAN.md`'s WhatsApp handoff notes.
 
 ### Real-time delivery
-- Backend broadcasts new messages via Socket.IO to **all** connected authenticated sockets (no rooms, no per-socket auth) — the frontend filters by `provider`/`chatId`/`accountId` client-side. Acceptable for the current single-tenant/personal deployment; would need rooms or per-socket auth before any genuinely multi-tenant use.
+- **Refactor Pass 1 (C9, 2026-06-20):** Backend now broadcasts to per-account Socket.IO rooms. Clients emit `join:account` on connect; the server emits via `io.to(accountId).emit(...)` instead of `io.emit(...)`. Frontend no longer needs to filter broadcasts by accountId client-side — only the owning account's sockets receive its messages. No socket-level auth token check. Per-account rooms narrow the broadcast surface but do not fix cross-instance delivery (see `SCALABILITY.md`).
 - Fallback: polling `GET /api/messages` (10s when Socket.IO is disconnected, 30s as a safety net when connected — see `LESSON_PLAN.md` Module 17 for why the safety-net poll exists).
 
 ---
@@ -135,7 +137,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 - Registration: `POST /api/auth/signup` — email + password (8–24 chars) + displayName → JWT
 - Login: `POST /api/auth/login` — email + password (max 24 chars) → JWT
 - All authenticated routes require `Authorization: Bearer <token>` header
-- JWT verified via `authenticate` middleware; `req.account` populated with `{ accountId, email }`
+- JWT verified via `authenticate` middleware; `req.account` populated with `{ accountId }` (email was removed from JWT payload in Refactor Pass 1 C4, 2026-06-20 — tokens issued before that deploy are rejected)
 - Passwords hashed with `bcryptjs` (10 salt rounds)
 - **Rate limiting:** `express-rate-limit` on `/auth/login` and `/auth/signup` (20 req / 15 min / IP), and on link-completion and contact-resolution endpoints (30 req / 15 min / IP)
 - **Login lockout:** after 8 consecutive failed attempts, the account is locked for 15 minutes (`Account.failedLoginAttempts` / `Account.lockedUntil`)
@@ -160,13 +162,13 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 | GET | `/api/conversations` | Yes | List conversations |
 | POST | `/api/keys/register` | Yes | Register public key (+ optional encrypted backup blob) |
 | GET | `/api/keys/me/private` | Yes | Fetch own encrypted private-key backup |
-| GET | `/api/keys/:ownerId` | No (by design — public keys) | Fetch a public key |
+| GET | `/api/keys/:ownerId` | Yes (added C3, 2026-06-20 — was public; changed to prevent membership enumeration via email) | Fetch a public key |
 | GET | `/api/provider/connections` | Yes | List linked providers |
 | GET | `/api/provider/contact/search` | Yes + rate-limited | Find a contact by username/phone |
 | GET | `/api/provider/resolve` | Yes + rate-limited | Resolve a provider chat ID to an internal accountId |
 | DELETE | `/api/provider/connections/:id` | Yes | Remove a connection |
 | POST | `/api/provider/link/init` | Yes | Start bot link flow |
-| GET | `/api/provider/link/status/:code` | No (short-lived code is the credential) | Poll link status |
+| GET | `/api/provider/link/status/:code` | Yes (added C2, 2026-06-20 — was public; changed to require auth) | Poll link status |
 | POST | `/api/provider/link/complete` | Admin token + rate-limited | Server-side/admin link completion |
 | GET | `/api/telegram/direct/status` | Yes | MTProto: session status |
 | POST | `/api/telegram/direct/request-code` | Yes | MTProto: send phone code |
@@ -207,5 +209,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 | `CLOUDINARY_URL` | No | Alternate single-string Cloudinary credential format |
 | `WEBHOOK_ADMIN_TOKEN` | No | Gates `/api/admin/*` and `/api/provider/link/complete` |
 | `SE_CRETS_MASTER_KEY` | No | Optional real master key for AES-GCM secret encryption, if per-connection encrypted tokens are ever stored |
+
+**UI documentation note:** A full UI audit and refactor (Module 10) is pending. Frontend component details in this spec may not reflect final visual design after that pass.
 
 **Known gaps, not yet fixed (tracked in `AUDIT_CHANGELOG.md`):** `TELEGRAM_WEBHOOK_SECRET` and `WHATSAPP_APP_SECRET` being optional means webhook signature verification silently no-ops if either is left unset in a deployment — both should be required in production.

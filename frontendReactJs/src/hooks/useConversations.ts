@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
 
 export default function useConversations(token?: string | null) {
@@ -28,7 +29,7 @@ export default function useConversations(token?: string | null) {
       currentProvider: string,
       currentChatId: string,
       since?: string,
-      privJwk?: any | null,
+      privJwk?: EcdhPrivateJwk | null,
       localOwnerId?: string | null,
     ) => {
       try {
@@ -96,7 +97,7 @@ export default function useConversations(token?: string | null) {
   const handleIncomingMessage = useCallback(
     async (
       message: ChatMessage,
-      privJwk?: any | null,
+      privJwk?: EcdhPrivateJwk | null,
       localOwnerId?: string | null,
     ) => {
       try {

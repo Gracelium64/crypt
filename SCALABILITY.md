@@ -24,7 +24,7 @@ This is the one item that can't be incrementally patched — it requires an arch
 
 ## Socket.IO has no cross-instance adapter
 
-`backend/src/services/realtime.service.ts`'s `broadcastMessage` calls `io.emit(...)` on a single in-process Socket.IO server. If you ran multiple instances, a message could be broadcast successfully but never reach a browser socket connected to a *different* instance — silent, intermittent message loss with no error anywhere.
+**Refactor Pass 1 update (2026-06-20):** Per-account Socket.IO rooms were added — clients now emit `join:account` on connect and the server emits to `io.to(accountId)` rather than `io.emit(...)` (C9). This narrows broadcast surface (each client only receives its own messages) but does **not** fix the cross-instance problem. `io.to(accountId).emit(...)` still only reaches sockets on *this* instance. A client connected to instance B still misses messages emitted on instance A.
 
 **Fix when needed:** add the Socket.IO Redis adapter (`@socket.io/redis-adapter`) before any multi-instance deploy. Until then, this is a hard prerequisite for the MTProto fix above to even matter — both need solving together.
 

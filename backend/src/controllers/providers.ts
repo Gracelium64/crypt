@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName } from "#services";
+import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName, logEvent } from "#services";
 import { env } from "#config";
 import { telegramInboundSchema, whatsappInboundSchema } from "#schemas";
 
@@ -133,6 +133,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
           }
         } catch (err) {
           console.error("Failed to create ProviderConnection:", err);
+          void logEvent("error", "provider:connection_create_failed", { provider: "telegram" }, err);
         }
 
         try {
@@ -295,6 +296,7 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
                 }
               } catch (err) {
                 console.error("Failed to create ProviderConnection:", err);
+                void logEvent("error", "provider:connection_create_failed", { provider: "whatsapp" }, err);
               }
 
               try {
@@ -319,7 +321,8 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
           try {
             const hosted = await downloadAndUploadWhatsappMedia(msg.image.id);
             attachments = [{ type: "image", url: hosted }];
-          } catch {
+          } catch (mediaErr) {
+            console.error("Failed to download/upload WhatsApp media:", mediaErr);
             attachments = [{ type: "image", url: "whatsapp-media-id:" + msg.image.id }];
           }
         }

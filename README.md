@@ -55,9 +55,9 @@ Key variables in `backend/.env`:
 
 - `MONGODB_URI` — MongoDB connection string (required)
 - `JWT_SECRET` — required JWT signing secret, min 32 chars (`openssl rand -hex 32`)
-- `DEMO_ENCRYPTION_KEY` — required, min 32 chars (used by a separate, unrelated server-side AES helper — see `CRYPT_SPECS.md`)
+- `DEMO_ENCRYPTION_KEY` — required, min 32 chars (encrypts Telegram session strings at rest; also available as a general server-side AES helper — see `CRYPT_SPECS.md`)
 - `CORS_ORIGIN` — origin for frontend during development (default `http://localhost:5173`)
-- `SE_CRETS_MASTER_KEY` — optional real master key for AES-GCM secret encryption
+- `SE_CRETS_MASTER_KEY` — optional real master key for AES-GCM secret encryption (currently no callers; reserved for a future secrets vault feature)
 
 Full variable list with required/optional status: `CRYPT_SPECS.md`.
 
@@ -110,8 +110,9 @@ curl -s http://localhost:4000/health | jq
 - Signup & login (returns JWT):
 
 ```bash
-curl -s -X POST http://localhost:4000/api/auth/signup -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password"}' | jq
-curl -s -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password"}' | jq
+# password: 8–24 chars; displayName is optional
+curl -s -X POST http://localhost:4000/api/auth/signup -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password1","displayName":"Alice"}' | jq
+curl -s -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password1"}' | jq
 ```
 
 - Generate keypair (frontend Key Manager) and `Register Public Key` (or POST `/api/keys/register` with `Authorization: Bearer <token>`)

@@ -2,19 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { apiBase } from "../lib/constants";
 
-export default function useRealtime(onNewMessage: ((m: any) => void) | null) {
+export default function useRealtime(accountId: string | null, onNewMessage: ((m: any) => void) | null) {
   const [isRealtime, setIsRealtime] = useState(false);
   const callbackRef = useRef(onNewMessage);
+  const accountIdRef = useRef(accountId);
 
-  // Keep the ref current without touching the socket
+  // Keep refs current without touching the socket
   useEffect(() => {
     callbackRef.current = onNewMessage;
   });
 
   useEffect(() => {
+    accountIdRef.current = accountId;
+  });
+
+  useEffect(() => {
     const socket: Socket = io(apiBase);
 
-    const onConnect = () => setIsRealtime(true);
+    const onConnect = () => {
+      setIsRealtime(true);
+      if (accountIdRef.current) socket.emit("join:account", accountIdRef.current);
+    };
     const onDisconnect = () => setIsRealtime(false);
     // Stable handler — always delegates to the latest callback
     const onMessage = (m: any) => callbackRef.current?.(m);

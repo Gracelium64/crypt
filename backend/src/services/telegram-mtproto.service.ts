@@ -5,6 +5,8 @@ import type { NewMessageEvent } from "telegram/events/NewMessage.js";
 import { Api } from "telegram";
 import { Message, ProviderConnection, TelegramSession, Key, Account } from "#models";
 import { broadcastMessage } from "./realtime.service.js";
+import { encryptText, decryptMarkedText } from "./crypto.service.js";
+import { logEvent } from "./logger.service.js";
 import { env } from "../config/env.js";
 
 const API_ID = env.TELEGRAM_API_ID ?? 0;
@@ -113,13 +115,13 @@ export async function loadAllMTProtoSessions(): Promise<void> {
     sessionString: { $ne: "" },
   }).lean();
 
-  for (const s of sessions) {
-    const accountId = s.accountId.toString();
+  for (const session of sessions) {
+    const accountId = session.accountId.toString();
     try {
-      const client = createClient(s.sessionString);
+      const client = createClient(decryptMarkedText(session.sessionString));
       await client.connect();
       if (!(await client.isUserAuthorized())) {
-        await TelegramSession.updateOne({ _id: s._id }, { active: false });
+        await TelegramSession.updateOne({ _id: session._id }, { active: false });
         console.log("[MTProto] stale session cleared for", accountId);
         continue;
       }
@@ -128,6 +130,7 @@ export async function loadAllMTProtoSessions(): Promise<void> {
       console.log("[MTProto] session restored for account", accountId);
     } catch (err) {
       console.error("[MTProto] failed to restore session for", accountId, err);
+      void logEvent("error", "telegram:session_restore_failed", { accountId }, err);
     }
   }
 }
@@ -208,7 +211,7 @@ export async function verifyPhoneCode(
     }
   }
 
-  const sessionString = (client.session as StringSession).save() as string;
+  const sessionString = encryptText((client.session as StringSession).save() as string);
 
   await TelegramSession.findOneAndUpdate(
     { accountId },
@@ -378,7 +381,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
         },
       );
 
-      const sessionString = (client.session as StringSession).save() as string;
+      const sessionString = encryptText((client.session as StringSession).save() as string);
       const me = await client.getMe() as any;
       const userId: string | null = me?.id?.toString() ?? null;
       const username: string | null = me?.username ?? null;

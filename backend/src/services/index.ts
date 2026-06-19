@@ -1,4 +1,5 @@
 export { initRealtime, broadcastMessage } from "./realtime.service.js";
+export { logEvent } from "./logger.service.js";
 export { sendToProvider } from "./providers.service.js";
 export {
   uploadBufferToCloudinary,

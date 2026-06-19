@@ -16,3 +16,5 @@ export { default as TelegramSession } from "./telegramSession.js";
 export type { TelegramSessionDocument } from "./telegramSession.js";
 export { default as Honeypot } from "./honeypot.js";
 export type { HoneypotDocument } from "./honeypot.js";
+export { default as Log } from "./log.js";
+export type { LogDocument } from "./log.js";
