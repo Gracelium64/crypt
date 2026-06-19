@@ -177,8 +177,8 @@ honeypotRouter.get("/credentials", (req: Request, res: Response) => {
         expiresIn: "24h",
       },
       stripe: {
-        secretKey: "sk-live-51Nq3xK9mZpQrN8vLw2JaB3cD4eF5gH6",
-        webhookSecret: "whsec-xK9mZpQ3rN8vL2wJaB3cD4eF5gH6iJ7k",
+        secretKey: "sk_live_51Nq3xK9mZpQrN8vLw2JaB3cD4eF5gH6",
+        webhookSecret: "whsec_xK9mZpQ3rN8vL2wJaB3cD4eF5gH6iJ7k",
         publishableKey: "pk-live-51Nq3xK9mZpQrN8vLw2JaB3",
       },
       telegram: {
@@ -217,8 +217,8 @@ honeypotRouter.get("/env", (req: Request, res: Response) => {
       TELEGRAM_BOT_TOKEN: "7234891056:AAGk9mZpQ3rN8vL2wJaB3cD4eF5gH6iJfake",
       TELEGRAM_API_ID: "24681357",
       TELEGRAM_API_HASH: "a1b2c3d4e5f6789012345678deadbeef",
-      STRIPE_SECRET_KEY: "sk-live-51Nq3xK9mZpQrN8vLw2JaB3cD4eF5gH6",
-      STRIPE_WEBHOOK_SECRET: "whsec-xK9mZpQ3rN8vL2wJaB3cD4eF5gH6iJ7k",
+      STRIPE_SECRET_KEY: "sk_live_51Nq3xK9mZpQrN8vLw2JaB3cD4eF5gH6",
+      STRIPE_WEBHOOK_SECRET: "whsec_xK9mZpQ3rN8vL2wJaB3cD4eF5gH6iJ7k",
       CLOUDINARY_CLOUD_NAME: "crypt-prod-media",
       CLOUDINARY_API_KEY: "874521309841726",
       CLOUDINARY_API_SECRET: "nQ7rL2vZ4wMx9pK3B1eD0sL8Kp2mN5q",
