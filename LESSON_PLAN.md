@@ -243,25 +243,29 @@ Both paths call the Cloudinary SDK with a buffer and return a URL.
 
 ---
 
-## Module 9 — Link/Pairing System (Day 6, ~4h)
+## Module 9 — Provider Link System (Day 6, ~4h)
 
-The most user-facing complex feature: two users pairing to establish an encrypted channel.
+**Correction (2026-06-19):** The original plan described a user-to-user pairing system with dual public keys. That design was not implemented. What shipped is a provider connection link system — a Crypt user generates a code, an external contact sends it to CryptBot/WhatsApp bot, and a `ProviderConnection` is created. See Module 22 for the actual user-to-user E2E key flow.
+
+**What `Link` actually is:**  
+A short-lived token that maps an external provider contact to a Crypt account. Fields: `{ code, provider, providerChatId, providerDisplayName, completed, expiresAt, claimedAccountId }`. No public keys. No two-user pairing.
 
 **Backend:**
 
-- `models/link.ts` — document: `{ creatorId, claimerId, creatorPubKey, claimerPubKey, code, status }`
-- `routes/link.route.ts` — create link (generates short code), claim link (other user redeems it), check status
+- `models/link.ts` — the Link document as above
+- `routes/link.route.ts` — three routes:
+  - `POST /provider/link/init` — authenticated, generates code + deep links
+  - `GET /provider/link/status/:code` — public, polls completion
+  - `POST /provider/link/complete` — admin-gated (called by CryptBot webhook, not the user directly)
+- `controllers/link.ts` — `initLink`, `getLinkStatus`, `completeLink`
 
 **Frontend:**
 
-- `hooks/useLink.ts` (199 lines) — treat this as a state machine. States: `idle → generating → pending → claimed → active`. Map each state to a UI screen in `LinkWizard.tsx`.
-- `components/LinkWizard.tsx` (146 lines) — renders different UI per state
-- `components/FindContact.tsx` (137 lines) — alternative path: find by username instead of QR
+- `hooks/useLink.ts` (199 lines) — generates code, saves to sessionStorage, auto-opens provider deep link, polls status every 2s, fires `onComplete` when `completed: true`
+- Used in: `ConnectTelegram.tsx` (CryptBot tab), `ConnectWhatsApp.tsx`
+- `components/FindContact.tsx` (137 lines) — alternative path: find existing contact by username/phone instead of generating a new link code
 
-**The crypto connection:**  
-When a link is claimed, both users' public keys are in the `link` document. The frontend uses these to derive the shared AES key via ECDH (Module 5). From that point, messages between these two users are encrypted with that derived key.
-
-**Key question:** What prevents a third user from claiming a link code that was meant for someone else? (Look at the `status` field and how `claimLink()` transitions it.)
+**Key question:** `POST /provider/link/complete` has `requireAdmin` middleware. Why? Who calls this endpoint, and why can't it be a public route?
 
 ---
 
@@ -1473,6 +1477,41 @@ The plan going in said the display-name-joining duplication existed at 3 call si
 
 ---
 
+## Module 22 — User-to-User E2E Key Flow (how two Crypt users actually encrypt messages to each other)
+
+**Why this module exists:** Module 9's original plan described a dedicated pairing document with dual public keys. That was never built. This module covers what WAS built: how two Crypt users end up with a shared ECDH key without any explicit pairing step.
+
+### The question: if there's no pairing document, how do two users encrypt messages to each other?
+
+Answer: the frontend derives the shared key on-the-fly at send time using the recipient's public key from the `Key` collection. No pairing step needed — just both users having registered their public keys.
+
+**Files to read (in order):**
+
+1. `backend/src/models/key.ts` — what a `Key` document stores: `{ ownerId (email), publicKey, privateKeyJwk (encrypted blob) }`
+2. `backend/src/routes/keys.route.ts` + `controllers/keys.ts` — `GET /keys/:ownerId` (fetch any user's public key), `POST /keys/register`, `GET /keys/me/private`
+3. `frontendReactJs/src/lib/crypto.ts` — `deriveAesGcmKey(myPrivateKey, theirPublicKey)` → shared AES key → `encryptForRecipient` / `decryptFromSender`
+4. `frontendReactJs/src/hooks/useSend.ts` — where key lookup + encrypt happens before POST
+
+**The flow for sending an encrypted message:**
+
+```
+User clicks Send
+→ useSend fetches recipient's public key from GET /keys/:ownerId
+→ derives shared AES key via ECDH (myPrivate × theirPublic)
+→ AES-GCM encrypts the plaintext
+→ POST /api/messages with encryptedText
+→ server stores ciphertext (never sees plaintext)
+→ recipient's browser fetches message
+→ derives same shared AES key (theirPrivate × senderPublic)
+→ AES-GCM decrypts → plaintext displayed
+```
+
+**Key question:** Both users independently derive the same AES key without ever sending it to each other or to the server. How is that possible? (Paint mixing analogy from Module 5.)
+
+**Also read:** `backend/src/controllers/keys.ts` lines around `getKey` — the fallback chain via `ProviderConnection` that lets the server resolve a key from a Telegram user ID when no direct `ownerId` match exists (added in Module 17).
+
+---
+
 ## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
@@ -1553,10 +1592,11 @@ MODULE STATUS:
 [x] Module 3 (entry/auth/pages known) — [x] hooks + API layer completed 2026-06-11
 [x] Module 4 - Auth (known)
 [x] Module 5 - Cryptography — completed 2026-06-11
-[ ] Module 6 - Telegram MTProto
-[ ] Module 7 - Socket.IO realtime
-[ ] Module 8 - Media uploads
-[ ] Module 9 - Link/pairing system
+[x] Module 6 - Telegram MTProto — completed 2026-06-18
+[x] Module 7 - Socket.IO realtime — completed 2026-06-18
+[x] Module 8 - Media uploads — completed 2026-06-19
+[x] Module 9 - Provider link system — completed 2026-06-19
+[x] Module 22 - User-to-user E2E key flow — completed 2026-06-19
 [ ] Module 10 - UI rework (pre-deadline)
 [x*] Module 11 - Real-world debugging session — executed 2026-06-15, CORE REVIEW PENDING
 [x*] Module 12 - WhatsApp Business API integration — executed 2026-06-15, CORE REVIEW PENDING
@@ -1606,6 +1646,91 @@ MODULE STATUS:
 | `useCallback(fn, [deps])`      | Memoizes a function — returns the same function reference between renders unless a dependency changes. Prevents stale dependency loops when a function is listed in another hook's deps array.                                                                                                              |
 | `useMemo(() => value, [deps])` | Memoizes a computed value/object — only recomputes when a dependency changes. Prevents unnecessary re-renders when a hook returns an object that would otherwise be a new reference every render.                                                                                                           |
 | `useRef(initial)`              | A mutable box (`ref.current`) that persists across renders without triggering a re-render when changed. Use cases: (1) hold a DOM reference, (2) stale closure fix — store a callback in the ref and update it each render so a long-lived closure (e.g. a socket handler) always calls the latest version. |
+
+### Module 9 — 2026-06-19
+
+**Corrections given:**
+
+- **Telegram method 1 described as a deep link:** Said method 1 uses "a direct deep link with a code sent through Telegram's official account." Correction: no deep link in method 1. It's phone number → `sendCode` → code delivered as an in-app Telegram message from the "Telegram" account → `signIn`. Deep links are used in the CryptBot tab to pre-fill the code, not in the phone auth flow.
+- **QR code thought to route through CryptBot:** Said QR and CryptBot both relay messages through the bot. Correction: QR creates a full MTProto session via `signInUserWithQrCode` — same direct result as phone code. Only the CryptBot tab routes messages through the bot.
+- **`/provider/link/complete` caller unclear:** Guessed "called by Crypt." Correction: the webhook handlers in `providers.ts` complete links directly by writing to the `Link` document — they bypass the `/provider/link/complete` route entirely. The route with `requireAdmin` exists as a safe external path but nothing in the current codebase calls it.
+- **`FindContact.tsx` scope:** I incorrectly suggested `FindContact.tsx` was part of Module 9. Grace correctly pushed back — it's for finding existing users to start a conversation with, not for linking a provider.
+- **"Only legitimate callers" framing:** Said adding auth to the status endpoint mattered because "the only legitimate caller is the frontend." Grace correctly called this out — security measures exist for illegitimate callers, not legitimate ones.
+
+**Good instincts:** Immediately identified the distinction between provider linking and user-to-user conversation linking before any code was opened — that's the right first question. Correctly identified sessionStorage purpose (tab navigation on mobile destroys React state). Read the `visibilitychange` comment correctly and understood the polling/interval relationship. Sharp unprompted security observation that `GET /provider/link/status/:code` is unauthenticated and leaks PII — led to two new REFACTOR_NOTES entries.
+
+---
+
+### Module 22 — 2026-06-19
+
+**Corrections given:**
+
+- **`keyUsages: []` misread as placeholder:** Grace described the empty array as "a placeholder for a required value." Correction: it is the correct answer — an ECDH public key genuinely has no usages as a key. It is only ever passed as the `public:` argument inside another key's `deriveBits` call, so its own usage list is empty by design, not as a workaround.
+- **`privJwk` missing reason:** Grace attributed possible absence to DB connection issues. Correction: the caller simply didn't pass it. `useSend` passes `opts.privJwk` which can be `null`. The localStorage fallback in `sendMessageService` is a recovery path for that case, not a DB failure handler.
+- **IV split confused with marker strip:** Grace described lines 121–122 of `decryptFromSender` as separating `[CRYPT:v1]` from encrypted content. Correction: the marker strip happens earlier on line 118 (string slice). Lines 121–122 operate on raw bytes, splitting at a fixed position — first 12 bytes are the IV, everything after is ciphertext. The fixed split works because the IV is always exactly 12 bytes, not because of a delimiter.
+- **`useSend` ownership:** Grace described the options object passed to `sendMessage` as what the hook owns. Correction: `useSend` owns exactly one piece of state — `busy` (line 5). Everything else flows in from outside. The hook's only job is to wrap the send call with a loading flag and trigger the post-send refresh.
+
+**Good instincts:** Immediately recalled the ECDH derivation correctly at the start (own private × other's public = same shared key on both sides, independently). Sharp unprompted observation that `GET /keys/:ownerId` being unauthenticated could enable membership enumeration via email — led to REFACTOR_NOTES entry. Correctly identified the missing authorization layer at router + controller level and articulated that authentication and authorization are two different guarantees. Spotted silent `// ignore` catch blocks as a systemic problem — led to the logging strategy entry in REFACTOR_NOTES. Good question about email in JWT being PII — led to a detailed four-phase migration plan in REFACTOR_NOTES.
+
+**Key concepts confirmed understood:**
+
+- ECDH: `A_private × B_public = B_private × A_public` — both sides independently derive the same AES key, neither side sends it
+- `[CRYPT:v1]` marker: version prefix prepended to `base64(IV + ciphertext)`; stripped before byte-level parsing
+- IV: 12 random bytes, prepended to ciphertext, recovered on decrypt by fixed-position split — no delimiter needed
+- `info: "crypt-companion v1"` in HKDF: domain separator — same keypairs + different info = different AES key, preventing cross-protocol key reuse
+- `Key.ownerId` dual identity: email for Crypt users, provider chat ID for mirrored keys — why it's a plain string, not an ObjectId ref
+- `sendMessageService` full flow: localStorage fallback for private key → unauthenticated fetch of recipient public key → ECDH derive → AES-GCM encrypt → POST `/messages/send`
+- `conversationTarget` vs `selectedChatId`: target = recipient identifier used for key lookup and `to` field; chatId = conversation thread ID for UI grouping
+
+**REFACTOR_NOTES entries added this session:**
+- `GET /keys/:ownerId` needs `authenticate` (membership enumeration via email)
+- Authorization layer required at router + controller level for all protected routes
+- Production-readiness standard applies to all future audits
+- Email in JWT is PII — four-phase migration plan to accountId-only token
+- `privJwk: any` needs a proper `EcdhPrivateJwk` interface type
+- Silent catch blocks: errors must be visible to users AND logged
+- Logging strategy: Pino (backend) + MongoDB logs collection + Sentry (optional)
+
+**LEARNER_GUIDE.md entry added:** `"deriveKey"` in `importPrivateJwkKey` usages is intentionally kept as a learning reference documenting the `deriveBits` vs `deriveKey` distinction. Do not remove without updating that note.
+
+---
+
+### Module 8 — 2026-06-19
+
+**Corrections given:**
+
+- **`downloadAndUploadWhatsappMedia` direction:** Described as "uploading to WhatsApp." Correction: it downloads FROM Meta's servers and uploads TO Cloudinary. Crypt never uploads anything to Meta — WhatsApp users' apps do that automatically. Crypt only retrieves bytes that already exist on Meta's servers.
+- **Pre-lunch Q1 (multipart):** Gist correct but reason imprecise. Correction: the issue is `Content-Type` mismatch — `express.json()` only activates on `application/json` requests; multipart is a completely different encoding with a boundary-separated body that requires Formidable to parse.
+
+**Good instincts:** Correctly identified that encrypted attachments use the base64 JSON path (Q2). Correctly identified that file upload was intentional non-MVP scope cut. Sharp gap analysis — independently identified missing Telegram download, WhatsApp outbound, and Telegram outbound paths. Good question on buffer confusion (what the buffer actually is). Meta data hoarding observation showed practical understanding of why Cloudinary re-hosting is necessary.
+
+**Refactor items filed this session:** Telegram inbound media download (missing), WhatsApp outbound media (missing), Telegram outbound media (needs verification), base64 MIME validation weakness, all marked as intentional non-MVP.
+
+---
+
+### Module 7 — 2026-06-18
+
+**Corrections given:**
+
+- **`socket.emit` vs `io.emit` reversed:** Thought `socket` = server broadcast, `io` = single client. Correction: `socket` = the one client that just connected; `io` = all connected clients simultaneously.
+- **Security implication framing:** Attributed broadcast-to-all acceptability to "Telegram wouldn't authorize two accounts from the same browser." Correction: acceptability is because (1) it's a private/demo deployment, (2) frontend filters by `accountId`, (3) E2E messages are ciphertext anyway.
+
+**Good instincts:** Flutter `StreamSubscription` analogy was directionally correct. Understood `callbackRef` stale closure concept and the separation of JavaScript mutation from React's render cycle. Productive tangent on Zod vs Mongoose schemas led to new REFACTOR_NOTES standards (InferSchemaType for Mongoose, z.infer<> for Zod, manual interfaces only where neither applies).
+
+---
+
+### Module 6 — 2026-06-18
+
+**Corrections given:**
+
+- **`clients` Map purpose:** Initial guess was "list available chats." Correction: one live MTProto connection per linked Crypt account — the server acts as multiple Telegram apps simultaneously.
+- **Bot echo filter direction:** Described as "filters messages arriving TO CryptBot." Correction: filters messages FROM the CryptBot that echo back to an MTProto-connected account, preventing spurious duplicate conversations.
+- **`phoneCodeHash` as security risk:** Thought it was the plaintext code stored insecurely. Correction: it's a correlation token Telegram returns when the code is requested — must be echoed back to prove the submission matches the original request. The plaintext code is never stored.
+- **`active: false` = holding pattern:** Thought it queued the session for retry. Correction: it's a dead end — client never added to `clients` map, session never reconnects, user must re-authenticate.
+
+**Good instincts:** Correctly identified that `clients` is one entry per user (not per chat). Correctly understood that `subscribeToMessages` is a live event listener. Correctly identified `SESSION_PASSWORD_NEEDED` as 2FA. Good question about no-try-catch in services — understood the pattern (services throw, controllers catch) after explanation. Sharp question about planned usage of `encryptText`/`decryptMarkedText` led to filing the TelegramSession encryption security item in REFACTOR_NOTES.
+
+---
 
 ### Module 2 — 2026-06-11
 
