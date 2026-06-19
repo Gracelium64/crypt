@@ -14,6 +14,7 @@ import {
   providerConnectionsRouter,
   swaggerRouter,
   telegramRouter,
+  honeypotRouter,
 } from "#routes";
 import { initRealtime, loadAllMTProtoSessions } from "#services";
 import { notFoundHandler, errorHandler } from "#middleware";
@@ -48,6 +49,7 @@ app.use("/api", linkRouter);
 app.use("/api", providerConnectionsRouter);
 app.use("/api", swaggerRouter);
 app.use("/api", telegramRouter);
+app.use("/api", honeypotRouter);
 
 app.use("*splat", notFoundHandler);
 app.use(errorHandler);
