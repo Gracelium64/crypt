@@ -92,7 +92,15 @@ export default function useConversations(token?: string | null) {
           }
         }
 
-        setMessages(incoming);
+        if (since && incoming.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m._id));
+            const fresh = incoming.filter((m) => !existingIds.has(m._id));
+            return fresh.length > 0 ? [...prev, ...fresh] : prev;
+          });
+        } else if (!since) {
+          setMessages(incoming);
+        }
         setLastSync(incoming[incoming.length - 1]?.createdAt ?? "");
       } catch (_err) {
         console.error("loadMessages error", _err);

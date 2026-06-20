@@ -270,7 +270,7 @@ function AppContent() {
       convHook.setMessages(updated);
     };
     void reDecrypt();
-  }, [privJwk, auth.token, convHook.messages]);
+  }, [privJwk, auth.token]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
