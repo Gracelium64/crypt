@@ -52,9 +52,11 @@ function AppContent() {
 
   const providerRef = useRef(provider);
   const selectedChatIdRef = useRef(selectedChatId);
+  const lastSyncRef = useRef(convHook.lastSync);
 
   useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { selectedChatIdRef.current = selectedChatId; }, [selectedChatId]);
+  useEffect(() => { lastSyncRef.current = convHook.lastSync; }, [convHook.lastSync]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -250,7 +252,7 @@ function AppContent() {
           try {
             const ownerId = msg.direction === "inbound" ? msg.from : msg.to;
             if (!ownerId) return msg;
-            const kresp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`);
+            const kresp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`, {}, auth.token);
             if (!kresp.ok) return msg;
             const kj = await kresp.json();
             const theirPub = kj?.data?.publicKey;
@@ -264,7 +266,7 @@ function AppContent() {
       convHook.setMessages(updated);
     };
     void reDecrypt();
-  }, [privJwk]);
+  }, [privJwk, auth.token]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
@@ -301,11 +303,11 @@ function AppContent() {
   useEffect(() => {
     const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
-      void loadConversations(provider);
-      void loadMessages(provider, selectedChatId, convHook.lastSync || undefined);
+      void loadConversations(providerRef.current);
+      void loadMessages(providerRef.current, selectedChatIdRef.current, lastSyncRef.current || undefined);
     }, interval);
     return () => window.clearInterval(timer);
-  }, [isRealtime, convHook.lastSync, provider, selectedChatId, loadConversations, loadMessages]);
+  }, [isRealtime, loadConversations, loadMessages]);
 
   const generateAndRegisterKeypair = async () => {
     if (!localOwnerId) { setKeyError("Enter your local ID first"); return; }

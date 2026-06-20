@@ -5,6 +5,7 @@ import {
   requestCode,
   verifyCode,
   deleteTelegramSession,
+  resetTelegramSessions,
   requestQrLogin,
   getQrStatus,
   submitQr2fa,
@@ -17,6 +18,7 @@ telegramRouter.get("/telegram/direct/status", authenticate, authorize(), getTele
 telegramRouter.post("/telegram/direct/request-code", authRateLimiter, authenticate, authorize(), validateBody(requestPhoneCodeSchema), requestCode);
 telegramRouter.post("/telegram/direct/verify-code", authRateLimiter, authenticate, authorize(), validateBody(verifyPhoneCodeSchema), verifyCode);
 telegramRouter.delete("/telegram/direct/session", authenticate, authorize(), deleteTelegramSession);
+telegramRouter.post("/telegram/direct/reset-sessions", authenticate, authorize(), resetTelegramSessions);
 
 telegramRouter.post("/telegram/direct/request-qr", authRateLimiter, authenticate, authorize(), requestQrLogin);
 telegramRouter.get("/telegram/direct/qr-status", authenticate, authorize(), getQrStatus);

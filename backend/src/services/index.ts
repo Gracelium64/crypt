@@ -17,6 +17,7 @@ export {
   verifyPhoneCode,
   sendViaMTProto,
   disconnectMTProtoSession,
+  resetOtherSessions,
   startQrLogin,
   getQrLoginStatus,
   resolveQr2fa,

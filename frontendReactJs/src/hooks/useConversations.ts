@@ -78,6 +78,8 @@ export default function useConversations(token?: string | null) {
 
               const kresp = await apiFetch(
                 `/keys/${encodeURIComponent(ownerId)}`,
+                {},
+                token,
               );
               if (!kresp.ok) continue;
               const kjson = await kresp.json();
@@ -119,6 +121,8 @@ export default function useConversations(token?: string | null) {
             if (ownerId) {
               const kresp = await apiFetch(
                 `/keys/${encodeURIComponent(ownerId)}`,
+                {},
+                token,
               );
               if (kresp.ok) {
                 const kjson = await kresp.json();

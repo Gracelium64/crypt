@@ -146,7 +146,7 @@ export function hasActiveClient(accountId: string): boolean {
 export async function requestPhoneCode(
   accountId: string,
   phoneNumber: string,
-): Promise<void> {
+): Promise<{ codeType: "app" | "sms" | "call" | "other" }> {
   if (!API_ID || !API_HASH) {
     throw new Error("Telegram MTProto not configured (set TELEGRAM_API_ID + TELEGRAM_API_HASH)");
   }
@@ -175,13 +175,49 @@ export async function requestPhoneCode(
   console.log("[MTProto] result keys:", Object.keys(result ?? {}));
   console.log("[MTProto] isCodeViaApp:", result?.isCodeViaApp);
 
-  const phoneCodeHash: string = result?.phoneCodeHash ?? "";
+  let phoneCodeHash: string = result?.phoneCodeHash ?? "";
   if (!phoneCodeHash) {
     throw new Error("sendCode returned no phoneCodeHash — check API_ID/API_HASH and phone number format");
   }
 
-  console.log("[MTProto] code sent successfully to", phoneNumber);
+  let codeType: "app" | "sms" | "call" | "other" = "app";
+
+  if (result?.isCodeViaApp) {
+    // An active session (e.g. production backend) will consume the code — force a different channel
+    console.log("[MTProto] isCodeViaApp=true — invoking ResendCode to force alternate delivery");
+    try {
+      const resend = await client.invoke(
+        new Api.auth.ResendCode({ phoneNumber, phoneCodeHash }),
+      ) as any;
+
+      const newHash: string = resend?.phoneCodeHash ?? "";
+      if (newHash) phoneCodeHash = newHash;
+
+      const typeName: string =
+        resend?.type?.className ?? resend?.type?.constructor?.name ?? "";
+      console.log("[MTProto] ResendCode type:", typeName);
+
+      const lower = typeName.toLowerCase();
+      if (lower.includes("sms") || lower.includes("fragment")) {
+        codeType = "sms";
+      } else if (lower.includes("call") || lower.includes("flash") || lower.includes("missed")) {
+        codeType = "call";
+      } else if (lower.includes("app")) {
+        codeType = "app";
+      } else {
+        codeType = "other";
+      }
+    } catch (resendErr) {
+      console.error("[MTProto] ResendCode failed, code may still be in Telegram app:", resendErr);
+      // codeType stays 'app' — frontend will guide user to check the app
+    }
+  } else {
+    codeType = "sms";
+  }
+
+  console.log("[MTProto] code sent to", phoneNumber, "via", codeType);
   pendingAuth.set(accountId, { client, phoneCodeHash, phoneNumber });
+  return { codeType };
 }
 
 export async function verifyPhoneCode(
@@ -259,6 +295,7 @@ export async function verifyPhoneCode(
 
   const oldClient = clients.get(accountId);
   if (oldClient) {
+    try { await oldClient.invoke(new Api.auth.LogOut()); } catch { /* ignore */ }
     try { await oldClient.disconnect(); } catch { /* ignore */ }
   }
 
@@ -419,6 +456,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
 
       const oldClient = clients.get(accountId);
       if (oldClient) {
+        try { await oldClient.invoke(new Api.auth.LogOut()); } catch { /* ignore */ }
         try { await oldClient.disconnect(); } catch { /* ignore */ }
       }
       clients.set(accountId, client);
@@ -443,6 +481,39 @@ export async function disconnectMTProtoSession(accountId: string): Promise<void>
     try { await client.invoke(new Api.auth.LogOut()); } catch { /* ignore */ }
     try { await client.disconnect(); } catch { /* ignore */ }
     clients.delete(accountId);
+  } else {
+    // Client not in memory (e.g. after backend restart) — reconstruct from DB to send proper logout
+    const session = await TelegramSession.findOne({ accountId, sessionString: { $ne: "" } }).lean();
+    if (session?.sessionString) {
+      const restoredClient = createClient(decryptMarkedText(session.sessionString));
+      try {
+        await restoredClient.connect();
+        await restoredClient.invoke(new Api.auth.LogOut());
+      } catch { /* ignore */ }
+      try { await restoredClient.disconnect(); } catch { /* ignore */ }
+    }
   }
   await TelegramSession.findOneAndUpdate({ accountId }, { active: false, sessionString: "" });
+}
+
+export async function resetOtherSessions(accountId: string): Promise<{ cleared: number }> {
+  const client = clients.get(accountId);
+  if (!client) throw new Error("No active session — connect first");
+
+  const result = await client.invoke(new Api.account.GetAuthorizations()) as any;
+  const others: any[] = (result?.authorizations ?? []).filter((a: any) => !a.current);
+  console.log("[MTProto] found", others.length, "other session(s) to clear for", accountId);
+
+  let cleared = 0;
+  for (const auth of others) {
+    try {
+      await client.invoke(new Api.account.ResetAuthorization({ hash: auth.hash }));
+      cleared++;
+    } catch (e) {
+      console.error("[MTProto] failed to reset session hash", auth.hash, e);
+    }
+  }
+
+  console.log("[MTProto] cleared", cleared, "of", others.length, "other sessions for", accountId);
+  return { cleared };
 }

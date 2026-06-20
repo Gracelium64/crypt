@@ -83,6 +83,8 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     if (!localPriv) throw new Error("missing local private key");
     const keyResp = await apiFetch(
       `/keys/${encodeURIComponent(conversationTarget)}`,
+      {},
+      authToken,
     );
     if (!keyResp.ok) throw new Error("recipient key not found");
     const keyJson = await keyResp.json();

@@ -110,16 +110,13 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
                 username: tgUsername ?? undefined,
               });
               try {
-                const account = await Account.findById(link.claimedAccountId).lean();
-                if (account?.email) {
-                  const keyRecord = await Key.findOne({ ownerId: account.email }).lean();
-                  if (keyRecord?.publicKey) {
-                    await Key.findOneAndUpdate(
-                      { ownerId: String(msg.chat.id) },
-                      { publicKey: keyRecord.publicKey },
-                      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
-                    );
-                  }
+                const keyRecord = await Key.findOne({ ownerId: link.claimedAccountId.toString() }).lean();
+                if (keyRecord?.publicKey) {
+                  await Key.findOneAndUpdate(
+                    { ownerId: String(msg.chat.id) },
+                    { publicKey: keyRecord.publicKey },
+                    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+                  );
                 }
               } catch (mirrorErr) {
                 console.error("Failed to mirror key on link:", mirrorErr);

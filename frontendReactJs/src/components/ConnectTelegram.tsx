@@ -27,6 +27,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [step, setStep] = useState<"idle" | "code" | "2fa">("idle");
+  const [codeType, setCodeType] = useState<"app" | "sms" | "call" | "other">("app");
   const [error, setError] = useState<string | null>(null);
 
   // qr flow
@@ -42,6 +43,9 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
 
   const [busy, setBusy] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   // Restore bot mode if a pending link is recovered from sessionStorage
   useEffect(() => {
@@ -146,11 +150,12 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await apiJson("/telegram/direct/request-code", {
+      const data = await apiJson("/telegram/direct/request-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber: phone.trim() }),
       }, token);
+      setCodeType(data.codeType ?? "app");
       setStep("code");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send code");
@@ -189,6 +194,21 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
 
   // ── Disconnect ────────────────────────────────────────────────────────────
 
+  const resetOtherSessions = async () => {
+    setBusy(true);
+    setResetConfirm(false);
+    setResetError(null);
+    try {
+      const data = await apiJson("/telegram/direct/reset-sessions", { method: "POST" }, token);
+      setResetDone(true);
+      console.log("[Telegram] reset sessions cleared:", data.cleared);
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const disconnect = async () => {
     setBusy(true);
     setDisconnectConfirm(false);
@@ -222,18 +242,31 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
           <strong>{status.phoneNumber ?? "Connected"}</strong>
           <span>Telegram connected — messages send directly</span>
         </div>
+        {resetError && <div className="ctg-error">{resetError}</div>}
         <div className="ctg-connected-actions">
           <span className="chip green">Active</span>
-          {disconnectConfirm ? (
+          {resetConfirm ? (
+            <>
+              <span className="ctg-disconnect-label">Terminate all other Telegram sessions for this account?</span>
+              <button className="btn-sm btn-danger" type="button" onClick={() => void resetOtherSessions()} disabled={busy}>Yes</button>
+              <button className="btn-ghost btn-sm" type="button" onClick={() => setResetConfirm(false)}>Cancel</button>
+            </>
+          ) : disconnectConfirm ? (
             <>
               <span className="ctg-disconnect-label">Disconnect?</span>
               <button className="btn-sm btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>Yes</button>
               <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(false)}>Cancel</button>
             </>
           ) : (
-            <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
-              Disconnect
-            </button>
+            <>
+              {resetDone
+                ? <span className="chip">Sessions reset</span>
+                : <button className="btn-ghost btn-sm" type="button" onClick={() => setResetConfirm(true)} disabled={busy}>Reset other sessions</button>
+              }
+              <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
+                Disconnect
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -279,17 +312,26 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                 </button>
               </div>
               <div className="ctg-hint">
-                A code will appear as a message from "Telegram" in your Telegram app (not SMS).
+                A verification code will be sent to your phone number.
               </div>
             </>
           )}
 
           {(step === "code" || step === "2fa") && (
             <>
+              <div className="ctg-hint">
+                {codeType === "sms"
+                  ? "Check your SMS messages for the code."
+                  : codeType === "call"
+                  ? "Answer the call from Telegram — the code will be read aloud."
+                  : codeType === "other"
+                  ? "Check your Telegram app or SMS for the code."
+                  : "Check your Telegram app for a message from \"Telegram\"."}
+              </div>
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="Enter code from Telegram"
+                placeholder="Enter code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && step !== "2fa") void verifyCode(); }}
