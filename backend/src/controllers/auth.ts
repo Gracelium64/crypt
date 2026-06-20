@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { Account, Key, Link, Message, ProviderConnection, TelegramSession } from "#models";
-import { logEvent } from "#services";
+import { logEvent, disconnectMTProtoSession } from "#services";
 import { env } from "#config";
 import type { SignupBody, LoginBody } from "#schemas";
 
@@ -104,11 +104,40 @@ export const nukeAccount: RequestHandler = async (req, res, next) => {
     return;
   }
   try {
+    // Collect providerChatIds before deleting connections — needed for mirror key and message cleanup
+    const conns = await ProviderConnection.find({ accountId }).lean();
+    const providerChatIds = conns.map((c) => c.providerChatId).filter(Boolean) as string[];
+
+    // Proper Telegram logout: sends auth.LogOut to Telegram and terminates the session server-side
+    try { await disconnectMTProtoSession(accountId); } catch { /* non-fatal — proceed with nuke */ }
+
+    // Delete the account's own messages
     await Message.deleteMany({ accountId });
+
+    // Delete fan-out inbound copies stored under other users' accounts
+    if (providerChatIds.length > 0) {
+      await Message.deleteMany({ from: { $in: providerChatIds }, accountId: { $ne: accountId } });
+    }
+
     await ProviderConnection.deleteMany({ accountId });
     await TelegramSession.deleteMany({ accountId });
-    await Link.deleteMany({ claimedAccountId: accountId });
-    await Key.deleteMany({ ownerId: accountId });
+
+    // Delete links by claimed account and by providerChatId
+    await Link.deleteMany({
+      $or: [
+        { claimedAccountId: accountId },
+        ...(providerChatIds.length > 0 ? [{ providerChatId: { $in: providerChatIds } }] : []),
+      ],
+    });
+
+    // Delete accountId-based key + all provider-mirrored copies
+    await Key.deleteMany({
+      $or: [
+        { ownerId: accountId },
+        ...(providerChatIds.length > 0 ? [{ ownerId: { $in: providerChatIds } }] : []),
+      ],
+    });
+
     await Account.findByIdAndDelete(accountId);
     void logEvent("warn", "auth:nuke_account", { accountId });
     res.json({ ok: true });

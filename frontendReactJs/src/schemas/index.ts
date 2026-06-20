@@ -28,6 +28,7 @@ export const ConversationSummarySchema = z.object({
   secureMessageCount: z.number().optional(),
   plainMessageCount: z.number().optional(),
   securityState: z.string().optional(),
+  lastDirection: z.enum(["inbound", "outbound"]).optional(),
 });
 
 export const UserSchema = z.object({

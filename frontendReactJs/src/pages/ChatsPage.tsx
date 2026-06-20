@@ -42,7 +42,7 @@ export default function ChatsPage({
           </div>
           <div className="conv-body">
             <div className="conv-top">
-              <span className="conv-name">{conv.counterpartName || conv.counterpart || conv.chatId}</span>
+              <span className={`conv-name${conv.lastDirection === "inbound" ? " conv-name--unread" : ""}`}>{conv.counterpartName || conv.counterpart || conv.chatId}</span>
               {conv.lastMessageAt && (
                 <span className="conv-time">
                   {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
