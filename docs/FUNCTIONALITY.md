@@ -6,11 +6,16 @@ Core features
 
 - Account sign up / sign in (JWT-based session token)
 - Local E2E key generation (ECDH P-256), public-key directory registration
-- Provider linking flow (short LINK <code> flow) with polling for completion
+- Provider linking — three modes:
+  - **Phone code** (MTProto direct): user enters phone number, receives code in Telegram app, full MTProto session established
+  - **QR code** (MTProto direct): user scans QR on second device, session established without entering a phone number
+  - **Via CryptBot** (`LINK <code>` flow): sends a link code to the bot, routes messages through the bot rather than direct user-to-user
 - Provider connections (store encrypted provider tokens server-side)
 - Compose and send messages (plain or secure). Secure messages: client-side ECDH → HKDF → AES-GCM, ciphertexts are prefixed with `[CRYPT:v1]`.
 - Attachment handling: multipart upload via Formidable + Cloudinary hosting; encrypted attachments are uploaded as raw encrypted blobs and marked as `?crypt=1`.
 - Realtime: Socket.IO push for new messages via per-account rooms (`join:account`); polling fallback (10s when disconnected, 30s safety net when connected).
+- Unread indicators: blue dot and bold name per conversation in the chat list; blue dot on provider pill when the non-active provider has unread messages. Indicators clear immediately on conversation open (optimistic local update, no server round-trip).
+- Account deletion (`DELETE /api/auth/account/nuke`): complete erasure — fan-out message copies in other accounts, provider-mirrored keys, links by providerChatId, and a proper `auth.LogOut` to Telegram before session deletion.
 
 Primary user flows
 
@@ -45,6 +50,8 @@ Primary user flows
 CSS Architecture Note
 
 > **Refactor Pass 2 (2026-06-20) complete.** `App.css` was split into 13 scoped CSS files under `frontendReactJs/src/styles/`. 122 inline `style={}` props extracted. The visual design is unchanged — this was a structural refactor only.
+
+> **Loading states (2026-06-21):** All async operations show a rotating spinner. Shared `.spinner` / `.spinner--lg` classes live in `global.css`, which is loaded from `main.tsx` (before authentication) so it is available on the login page. Per-component CSS files no longer need to redeclare animation keyframes.
 
 Limitations / Notes
 

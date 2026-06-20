@@ -1,6 +1,6 @@
 # Maintainer Guide
 
-_Last updated: 2026-06-20 (after Refactor Pass 2 Correction)_
+_Last updated: 2026-06-21 (after prod/blue deployment and debug session)_
 
 ## What This System Does
 
@@ -34,7 +34,7 @@ See `CRYPT_SPECS.md` for the full 30-route table. Summary:
 - Telegram/WhatsApp webhooks — own secret verification inside controllers
 
 **JWT only (authenticate):**
-- `GET /api/auth/me`, `DELETE /api/auth/account`
+- `GET /api/auth/me`, `DELETE /api/auth/account/nuke` — nuke deletes account + all messages, keys (including provider-mirrored), links, connections, sessions; sends `auth.LogOut` to Telegram before session deletion
 - `GET /api/messages`, `GET /api/conversations`, `POST /api/messages/send`, `DELETE /api/messages/conversation`, `DELETE /api/messages/all`
 - `GET /api/providers/status` — requires JWT (changed in Pass 2 Correction)
 - `GET /api/provider/connections`, `GET /api/provider/contact/search`

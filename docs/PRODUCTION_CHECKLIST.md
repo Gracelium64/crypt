@@ -73,8 +73,10 @@
 
 **Service settings:**
 - Root directory: `frontendReactJs`
-- Build command: `npm ci --legacy-peer-deps && npm run build`
+- Build command: `npm ci && npm run build`
 - Publish directory: `frontendReactJs/dist`
+
+> **npm overrides in place (2026-06-21):** `frontendReactJs/package.json` contains overrides for `@aashutoshrathi/word-wrap` (yanked from registry, replaced by `word-wrap@1.2.5`) and `esbuild`. `backend/package.json` overrides `es6-symbol@3.1.4` (drops the broken `es5-ext` transitive dep). These overrides are committed — `npm ci` resolves correctly without `--legacy-peer-deps`.
 
 **Environment variables:**
 
@@ -124,12 +126,15 @@
 
 ## 10. Smoke Test After Deploy
 
-- [ ] `GET https://<backend>/api/providers/status` returns 200
+- [ ] `GET https://<backend>/api/providers/status` returns 200 (with JWT)
 - [ ] Register a new account via the frontend
-- [ ] Connect Telegram (MTProto phone auth completes)
-- [ ] Send a secure message — verify it appears and decrypts on the other device
-- [ ] Attach an image — verify Cloudinary upload and display *(optional — file attachments not yet working for WhatsApp; skip for MVP)*
-- [ ] Disconnect and reconnect — verify session restores
+- [ ] Connect Telegram via phone code — verify code arrives in Telegram app; verify Settings shows "Active"
+- [ ] Send a plain message — verify delivery and receipt
+- [ ] Send a secure message — verify `[CRYPT:v1]` ciphertext in DB and decrypted text on both devices
+- [ ] Receive a message — verify blue unread dot appears in conversation list; verify dot clears on open
+- [ ] Attach an image — verify Cloudinary upload URL appears in message *(WhatsApp skip for MVP)*
+- [ ] Delete a conversation — verify spinner shows during delete, conversation removed from list
+- [ ] Nuke account — verify account + all associated messages, keys, links, connections deleted; verify Telegram session terminated
 
 ---
 

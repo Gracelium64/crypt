@@ -1,8 +1,8 @@
 # Telegram Phone Code Non-Delivery — Investigation & Resolution
 
-**Branch:** `dev/grace-refactor-debug`
+**Branch:** `dev/grace-refactor-debug` → merged to `prod/blue`
 **Date opened:** 2026-06-20
-**Status:** Waiting on Telegram freshness window (~24h from QR login on 2026-06-20 ~19:42 UTC+2)
+**Status:** ✅ RESOLVED — 2026-06-21
 
 ---
 
@@ -103,12 +103,13 @@ The backend endpoint (`POST /api/telegram/direct/reset-sessions`) and service fu
 
 ---
 
-## After the Fix
+## Resolution — 2026-06-21
 
-Once phone code delivery is confirmed working:
+Terminating all Telegram sessions from the Telegram app itself (not via Crypt) cleared the ghost session on the number `+49 1522 4337813`. Phone code delivery now returns `isCodeViaApp: false` and the code arrives via SMS.
 
-1. Update this file status to `RESOLVED`
-2. Test the full phone code → verify code → MTProto session flow end to end
+Full phone code → verify code → MTProto session flow confirmed end-to-end on prod/blue.
+
+**Remaining post-fix steps:**
 3. Switch Telegram bot webhook back to production:
    ```
    npm run set-webhook -- --url https://crypt-backend-s14y.onrender.com/api/providers/telegram/webhook
