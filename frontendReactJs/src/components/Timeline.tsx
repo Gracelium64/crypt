@@ -8,6 +8,7 @@ import type { ChatMessage } from "../types";
 
 type Props = {
   messages: ChatMessage[];
+  loading?: boolean;
   privJwk: EcdhPrivateJwk | null;
   localOwnerId: string | null;
   deriveAesGcmKey: (privJwkObj: EcdhPrivateJwk, otherPubB64: string) => Promise<CryptoKey>;
@@ -19,6 +20,7 @@ const toHumanTime = (value: string) =>
 
 const Timeline: FC<Props> = ({
   messages,
+  loading = false,
   privJwk,
   localOwnerId,
   deriveAesGcmKey,
@@ -34,10 +36,16 @@ const Timeline: FC<Props> = ({
   return (
     <>
       {messages.length === 0 ? (
-        <div className="empty-state timeline-empty">
-          <p>No messages yet for this thread.</p>
-          <p>Use the provider web client to start the chat, then reply here.</p>
-        </div>
+        loading ? (
+          <div className="empty-state timeline-loading">
+            <span className="spinner spinner--lg" />
+          </div>
+        ) : (
+          <div className="empty-state timeline-empty">
+            <p>No messages yet for this thread.</p>
+            <p>Use the provider web client to start the chat, then reply here.</p>
+          </div>
+        )
       ) : (
         messages.map((message) => {
           const content = message.bodyOmitted

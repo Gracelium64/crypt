@@ -101,7 +101,7 @@ export default function FindContact({
           className="fc-search-input"
         />
         <button onClick={() => void search()} disabled={busy || !query.trim()}>
-          {busy ? "Searching…" : "Search"}
+          {busy ? <span className="spinner" /> : "Search"}
         </button>
       </div>
 

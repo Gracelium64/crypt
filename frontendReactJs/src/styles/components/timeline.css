@@ -121,6 +121,8 @@
   font-size: 14px;
 }
 .timeline-empty p { line-height: 1.5; }
+.timeline-loading { opacity: 0.6; }
+.timeline-spinner { display: block; }
 
 /* ── Timeline inline style extractions ── */
 .message-security {

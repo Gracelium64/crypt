@@ -43,6 +43,9 @@ function AppContent() {
   const [toastsEnabled, setToastsEnabled] = useState(
     () => localStorage.getItem("crypt:toasts") !== "off",
   );
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const convHook = useConversations(auth.token);
   const { handleIncomingMessage } = convHook;
@@ -128,13 +131,25 @@ function AppContent() {
     providerStatuses.find((s) => s.provider === provider) ?? null;
 
   const loadConversations = useCallback(
-    async (p: Provider) => { await convHook.loadConversations(p); },
+    async (p: Provider) => {
+      setConversationsLoading(true);
+      try {
+        await convHook.loadConversations(p);
+      } finally {
+        setConversationsLoading(false);
+      }
+    },
     [convHook.loadConversations],
   );
 
   const loadMessages = useCallback(
     async (p: Provider, chatId: string, since?: string) => {
-      await convHook.loadMessages(p, chatId, since, privJwk, localOwnerId);
+      if (!since) setMessagesLoading(true);
+      try {
+        await convHook.loadMessages(p, chatId, since, privJwk, localOwnerId);
+      } finally {
+        if (!since) setMessagesLoading(false);
+      }
     },
     [convHook.loadMessages, privJwk, localOwnerId],
   );
@@ -336,6 +351,7 @@ function AppContent() {
   };
 
   const deleteConversation = useCallback(async () => {
+    setDeleteBusy(true);
     try {
       const resp = await apiFetch(
         `/messages/conversation?provider=${encodeURIComponent(provider)}&chatId=${encodeURIComponent(selectedChatId)}`,
@@ -348,6 +364,8 @@ function AppContent() {
       await convHook.loadConversations(provider);
     } catch (err) {
       console.error(err);
+    } finally {
+      setDeleteBusy(false);
     }
   }, [auth.token, provider, selectedChatId, convHook.loadConversations]);
 
@@ -399,6 +417,7 @@ function AppContent() {
           selectedConversation={selectedConversation}
           selectedChatId={selectedChatId}
           messages={convHook.messages}
+          messagesLoading={messagesLoading}
           isRealtime={isRealtime}
           privJwk={privJwk}
           localOwnerId={localOwnerId}
@@ -412,6 +431,7 @@ function AppContent() {
           sendBusy={sendBusy}
           selectedProviderStatus={selectedProviderStatus}
           onBack={() => setChatOpen(false)}
+          deleteBusy={deleteBusy}
           onDelete={() => void deleteConversation()}
           onSend={() => void handleSend()}
         />
@@ -461,6 +481,8 @@ function AppContent() {
             {tab === "chats" && (
               <ChatsPage
                 conversations={convHook.conversations}
+                conversationsLoading={conversationsLoading}
+                hasConnections={connectionsHook.connections.length > 0}
                 selectedChatId={selectedChatId}
                 onOpenConversation={openConversation}
                 onGoToSettings={() => setTab("settings")}

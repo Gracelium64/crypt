@@ -15,6 +15,7 @@ type Props = {
   selectedConversation: ConversationSummary | null;
   selectedChatId: string;
   messages: ChatMessage[];
+  messagesLoading: boolean;
   isRealtime: boolean;
   privJwk: EcdhPrivateJwk | null;
   localOwnerId: string;
@@ -26,6 +27,7 @@ type Props = {
   replyMode: "secure" | "plain";
   setReplyMode: (m: "secure" | "plain") => void;
   sendBusy: boolean;
+  deleteBusy: boolean;
   selectedProviderStatus: { backendReady: boolean } | null;
   onBack: () => void;
   onDelete: () => void;
@@ -37,6 +39,7 @@ export default function ChatView({
   selectedConversation,
   selectedChatId,
   messages,
+  messagesLoading,
   isRealtime,
   privJwk,
   localOwnerId,
@@ -48,6 +51,7 @@ export default function ChatView({
   replyMode,
   setReplyMode,
   sendBusy,
+  deleteBusy,
   selectedProviderStatus,
   onBack,
   onDelete,
@@ -72,7 +76,9 @@ export default function ChatView({
           <span>{providerMeta[provider].label}</span>
         </div>
         <span className={`header-status${isRealtime ? " live" : ""}`} title={isRealtime ? "Live" : "Polling"} />
-        {confirmingDelete ? (
+        {deleteBusy ? (
+          <span className="spinner" />
+        ) : confirmingDelete ? (
           <div className="cv-delete-confirm-row">
             <span className="cv-delete-confirm-label">Delete?</span>
             <button
@@ -106,6 +112,7 @@ export default function ChatView({
         <div className="timeline">
           <Timeline
             messages={messages}
+            loading={messagesLoading}
             privJwk={privJwk}
             localOwnerId={localOwnerId}
             deriveAesGcmKey={deriveAesGcmKey}
@@ -174,7 +181,7 @@ export default function ChatView({
               disabled={sendBusy || !selectedChatId || (!text && !file) || !selectedProviderStatus?.backendReady}
               aria-label="Send"
             >
-              ➤
+              {sendBusy ? <span className="spinner" /> : "➤"}
             </button>
           </div>
         </div>

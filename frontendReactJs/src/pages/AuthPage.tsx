@@ -132,11 +132,11 @@ export default function AuthPage() {
         <div className="auth-actions">
           {tab === "signin" ? (
             <button type="button" disabled={busy} onClick={handleLogin}>
-              Sign in
+              {busy ? <span className="spinner" /> : "Sign in"}
             </button>
           ) : (
             <button type="button" disabled={busy} onClick={handleRegister}>
-              Sign up
+              {busy ? <span className="spinner" /> : "Sign up"}
             </button>
           )}
         </div>

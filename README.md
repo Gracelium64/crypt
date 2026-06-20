@@ -16,6 +16,8 @@ Meaning, conclusions, and plans to expand on this:
 - Both lie and assume even when instructed to never assume and ask for clarifications and/or admit knowledge gaps when implementing a feature
 - Claude seems to be better in meta-prompting
 - Both Copilot and Claude tend to report completion of tasks out of memory's itent to do so rather than verifying what was actually done - even when prompted not to do that
+- There is significant mental strain in guiding an correcting an AI agent to complete complex tasks
+- AI Coding Agent is not a substitute for a human coder
 
 #
 

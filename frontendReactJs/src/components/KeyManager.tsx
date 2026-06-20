@@ -71,7 +71,7 @@ export default function KeyManager(props: Props) {
                 onClick={() => { setConfirming(false); void generateAndRegisterKeypair(); }}
                 disabled={keyBusy}
               >
-                Generate anyway
+                {keyBusy ? <span className="spinner" /> : "Generate anyway"}
               </button>
               <button type="button" onClick={() => setConfirming(false)}>
                 Cancel
@@ -80,7 +80,7 @@ export default function KeyManager(props: Props) {
           </div>
         ) : (
           <button type="button" onClick={handleClick} disabled={keyBusy}>
-            Generate New Keypair
+            {keyBusy ? <span className="spinner" /> : "Generate New Keypair"}
           </button>
         )}
       </div>
