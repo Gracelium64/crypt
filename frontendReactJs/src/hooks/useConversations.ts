@@ -109,6 +109,12 @@ export default function useConversations(token?: string | null) {
     [token],
   );
 
+  const markConversationRead = useCallback((chatId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => c.chatId === chatId ? { ...c, lastDirection: undefined } : c),
+    );
+  }, []);
+
   const handleIncomingMessage = useCallback(
     async (
       message: ChatMessage,
@@ -160,6 +166,7 @@ export default function useConversations(token?: string | null) {
       loadConversations,
       loadMessages,
       handleIncomingMessage,
+      markConversationRead,
     }),
     [
       conversations,
@@ -169,6 +176,7 @@ export default function useConversations(token?: string | null) {
       loadConversations,
       loadMessages,
       handleIncomingMessage,
+      markConversationRead,
     ],
   );
 }

@@ -43,9 +43,6 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
 
   const [busy, setBusy] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState(false);
-  const [resetDone, setResetDone] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
 
   // Restore bot mode if a pending link is recovered from sessionStorage
   useEffect(() => {
@@ -194,21 +191,6 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
 
   // ── Disconnect ────────────────────────────────────────────────────────────
 
-  const resetOtherSessions = async () => {
-    setBusy(true);
-    setResetConfirm(false);
-    setResetError(null);
-    try {
-      const data = await apiJson("/telegram/direct/reset-sessions", { method: "POST" }, token);
-      setResetDone(true);
-      console.log("[Telegram] reset sessions cleared:", data.cleared);
-    } catch (err: unknown) {
-      setResetError(err instanceof Error ? err.message : "Reset failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const disconnect = async () => {
     setBusy(true);
     setDisconnectConfirm(false);
@@ -242,31 +224,18 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
           <strong>{status.phoneNumber ?? "Connected"}</strong>
           <span>Telegram connected — messages send directly</span>
         </div>
-        {resetError && <div className="ctg-error">{resetError}</div>}
         <div className="ctg-connected-actions">
           <span className="chip green">Active</span>
-          {resetConfirm ? (
-            <>
-              <span className="ctg-disconnect-label">Terminate all other Telegram sessions for this account?</span>
-              <button className="btn-sm btn-danger" type="button" onClick={() => void resetOtherSessions()} disabled={busy}>Yes</button>
-              <button className="btn-ghost btn-sm" type="button" onClick={() => setResetConfirm(false)}>Cancel</button>
-            </>
-          ) : disconnectConfirm ? (
+          {disconnectConfirm ? (
             <>
               <span className="ctg-disconnect-label">Disconnect?</span>
               <button className="btn-sm btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>Yes</button>
               <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(false)}>Cancel</button>
             </>
           ) : (
-            <>
-              {resetDone
-                ? <span className="chip">Sessions reset</span>
-                : <button className="btn-ghost btn-sm" type="button" onClick={() => setResetConfirm(true)} disabled={busy}>Reset other sessions</button>
-              }
-              <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
-                Disconnect
-              </button>
-            </>
+            <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
+              Disconnect
+            </button>
           )}
         </div>
       </div>

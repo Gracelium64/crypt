@@ -146,7 +146,7 @@ export function hasActiveClient(accountId: string): boolean {
 export async function requestPhoneCode(
   accountId: string,
   phoneNumber: string,
-): Promise<{ codeType: "app" | "sms" | "call" | "other" }> {
+): Promise<{ codeType: "app" | "sms" }> {
   if (!API_ID || !API_HASH) {
     throw new Error("Telegram MTProto not configured (set TELEGRAM_API_ID + TELEGRAM_API_HASH)");
   }
@@ -180,40 +180,7 @@ export async function requestPhoneCode(
     throw new Error("sendCode returned no phoneCodeHash — check API_ID/API_HASH and phone number format");
   }
 
-  let codeType: "app" | "sms" | "call" | "other" = "app";
-
-  if (result?.isCodeViaApp) {
-    // An active session (e.g. production backend) will consume the code — force a different channel
-    console.log("[MTProto] isCodeViaApp=true — invoking ResendCode to force alternate delivery");
-    try {
-      const resend = await client.invoke(
-        new Api.auth.ResendCode({ phoneNumber, phoneCodeHash }),
-      ) as any;
-
-      const newHash: string = resend?.phoneCodeHash ?? "";
-      if (newHash) phoneCodeHash = newHash;
-
-      const typeName: string =
-        resend?.type?.className ?? resend?.type?.constructor?.name ?? "";
-      console.log("[MTProto] ResendCode type:", typeName);
-
-      const lower = typeName.toLowerCase();
-      if (lower.includes("sms") || lower.includes("fragment")) {
-        codeType = "sms";
-      } else if (lower.includes("call") || lower.includes("flash") || lower.includes("missed")) {
-        codeType = "call";
-      } else if (lower.includes("app")) {
-        codeType = "app";
-      } else {
-        codeType = "other";
-      }
-    } catch (resendErr) {
-      console.error("[MTProto] ResendCode failed, code may still be in Telegram app:", resendErr);
-      // codeType stays 'app' — frontend will guide user to check the app
-    }
-  } else {
-    codeType = "sms";
-  }
+  const codeType: "app" | "sms" = result?.isCodeViaApp ? "app" : "sms";
 
   console.log("[MTProto] code sent to", phoneNumber, "via", codeType);
   pendingAuth.set(accountId, { client, phoneCodeHash, phoneNumber });

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useAuth } from "@/context";
 import AuthPage from "@/pages/AuthPage";
-import "../styles/global.css";
 
 type Props = {
   children: ReactNode;

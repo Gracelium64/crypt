@@ -9,6 +9,7 @@ type Props = {
   conversations: ConversationSummary[];
   conversationsLoading: boolean;
   hasConnections: boolean;
+  connectionsLoading: boolean;
   selectedChatId: string;
   onOpenConversation: (chatId: string, provider?: Provider) => void;
   onGoToSettings: () => void;
@@ -18,6 +19,7 @@ export default function ChatsPage({
   conversations,
   conversationsLoading,
   hasConnections,
+  connectionsLoading,
   selectedChatId,
   onOpenConversation,
   onGoToSettings,
@@ -34,7 +36,7 @@ export default function ChatsPage({
       <div className="empty-screen">
         <div className="empty-icon">💬</div>
         <h3>No chats yet</h3>
-        {!hasConnections && (
+        {!hasConnections && !connectionsLoading && (
           <>
             <p>Link your Telegram or WhatsApp account in Settings to see conversations here.</p>
             <button type="button" onClick={onGoToSettings}>Go to Settings</button>

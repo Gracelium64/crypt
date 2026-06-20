@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import "./styles/global.css";
 import "./styles/app-dialogs.css";
 import { useAuth } from "@/context";
 import { apiFetch } from "@/lib/api";
@@ -115,7 +114,8 @@ function AppContent() {
     if (prov) setProvider(prov);
     setSelectedChatId(chatId);
     setChatOpen(true);
-  }, []);
+    convHook.markConversationRead(chatId);
+  }, [convHook.markConversationRead]);
 
   useEffect(() => {
     if (!file) { setFilePreview(null); return; }
@@ -462,16 +462,22 @@ function AppContent() {
             <h1>Crypt</h1>
             {tab === "chats" && (
               <div className="provider-pills">
-                {supportedProviders.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`provider-pill${p === provider ? " active" : ""}`}
-                    onClick={() => setProvider(p)}
-                  >
-                    {providerMeta[p].icon} {providerMeta[p].label}
-                  </button>
-                ))}
+                {supportedProviders.map((p) => {
+                  const pillHasUnread = p !== provider && convHook.conversations.some(
+                    (c) => c.provider === p && c.lastDirection === "inbound",
+                  );
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`provider-pill${p === provider ? " active" : ""}`}
+                      onClick={() => setProvider(p)}
+                    >
+                      {providerMeta[p].icon} {providerMeta[p].label}
+                      {pillHasUnread && <span className="provider-pill-dot" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
             <span className={`header-status${isRealtime ? " live" : ""}`} />
@@ -483,6 +489,7 @@ function AppContent() {
                 conversations={convHook.conversations}
                 conversationsLoading={conversationsLoading}
                 hasConnections={connectionsHook.connections.length > 0}
+                connectionsLoading={connectionsHook.connectionsBusy}
                 selectedChatId={selectedChatId}
                 onOpenConversation={openConversation}
                 onGoToSettings={() => setTab("settings")}
