@@ -30,6 +30,8 @@ Notes
 
 - Ensure `WEBHOOK_ADMIN_TOKEN` is set prior to calling any admin endpoints.
 - Ensure `SE_CRETS_MASTER_KEY` is configured if you will store per-connection encrypted tokens.
+- Set `NODE_ENV=production` in the backend environment to gate the Swagger UI (`/api/docs`) and OpenAPI spec (`/api/openapi.json`) behind JWT authentication. Without this, both routes are public.
+- Use `GET /health` (not `/api/providers/status`) for your Render health check — `/providers/status` requires a JWT.
 
 Deep-link config (optional but recommended)
 

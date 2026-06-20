@@ -6,7 +6,7 @@ import { Link } from "#models";
 
 const linkRouter = Router();
 
-linkRouter.post("/provider/link/init", authenticate, validateBody(initLinkSchema), initLink);
+linkRouter.post("/provider/link/init", linkRateLimiter, authenticate, authorize(), validateBody(initLinkSchema), initLink);
 linkRouter.get(
   "/provider/link/status/:code",
   authenticate,

@@ -1,6 +1,6 @@
 # Crypt — Technical Specifications
 
-_Last verified against source: 2026-06-20 (Refactor Pass 1 applied)._
+_Last verified against source: 2026-06-20 (Refactor Pass 1, Pass 2, and Pass 2 Correction applied)._
 
 ---
 
@@ -16,6 +16,7 @@ _Last verified against source: 2026-06-20 (Refactor Pass 1 applied)._
 | Real-time | Socket.IO | 4.8.3 |
 | Auth | JWT (`jsonwebtoken` 9.0.2) + `bcryptjs` 2.4.3 | — |
 | Rate limiting | `express-rate-limit` | 8.5.2 |
+| HTTP security headers | `helmet` | 8.2.0 |
 | Telegram Bot API | raw `fetch()` calls to `api.telegram.org` — no SDK | — |
 | Telegram MTProto | `telegram` (gramjs) | 2.26.22 |
 | Media hosting | Cloudinary (`cloudinary` SDK) | 1.33.0 |
@@ -113,7 +114,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 **MTProto path (primary, when the sender has an active gramjs session):**
 - `sendViaMTProto` uses `Api.messages.SendMessage` directly to the recipient's Telegram user ID
 - Recipient's gramjs client receives via the `NewMessage` event handler → stored in DB → broadcast via Socket.IO
-- Login: phone-code (`sendCode`/`signIn`) or QR (`signInUserWithQrCode`) — see `LESSON_PLAN.md` Modules 6 and 16 for the full session lifecycle and known phone-code delivery caveats.
+- Login: phone-code (`sendCode`/`signIn`) or QR (`signInUserWithQrCode`) — see `planning/LESSON_PLAN.md` Modules 6 and 16 for the full session lifecycle and known phone-code delivery caveats.
 
 **Bot path (fallback / webhook, for users without an active MTProto session, and for the `LINK <code>` flow):**
 - Outbound: backend sends via raw `fetch()` to the Telegram Bot API
@@ -123,12 +124,12 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 ### WhatsApp — fully implemented (not planned)
 - Meta WhatsApp Cloud API, official REST API via raw `fetch()` — no `whatsapp-web.js`/`baileys`, no unofficial client.
 - Outbound send and inbound webhook (`POST /api/providers/whatsapp/webhook`, HMAC-verified via `WHATSAPP_APP_SECRET`) both live, same fan-out pattern as the Telegram bot path.
-- Every WhatsApp message flows through the single business number — there is no per-user "send as" equivalent to Telegram MTProto (see `LESSON_PLAN.md` Module 12 for the full platform comparison).
-- Currently limited to Meta's shared test number with a 5-recipient approval cap pending business verification — see `LESSON_PLAN.md`'s WhatsApp handoff notes.
+- Every WhatsApp message flows through the single business number — there is no per-user "send as" equivalent to Telegram MTProto (see `planning/LESSON_PLAN.md` Module 12 for the full platform comparison).
+- Currently limited to Meta's shared test number with a 5-recipient approval cap pending business verification — see `planning/LESSON_PLAN.md`'s WhatsApp handoff notes.
 
 ### Real-time delivery
-- **Refactor Pass 1 (C9, 2026-06-20):** Backend now broadcasts to per-account Socket.IO rooms. Clients emit `join:account` on connect; the server emits via `io.to(accountId).emit(...)` instead of `io.emit(...)`. Frontend no longer needs to filter broadcasts by accountId client-side — only the owning account's sockets receive its messages. No socket-level auth token check. Per-account rooms narrow the broadcast surface but do not fix cross-instance delivery (see `SCALABILITY.md`).
-- Fallback: polling `GET /api/messages` (10s when Socket.IO is disconnected, 30s as a safety net when connected — see `LESSON_PLAN.md` Module 17 for why the safety-net poll exists).
+- **Refactor Pass 1 (C9, 2026-06-20):** Backend now broadcasts to per-account Socket.IO rooms. Clients emit `join:account` on connect; the server emits via `io.to(accountId).emit(...)` instead of `io.emit(...)`. Frontend no longer needs to filter broadcasts by accountId client-side — only the owning account's sockets receive its messages. No socket-level auth token check. Per-account rooms narrow the broadcast surface but do not fix cross-instance delivery (see `docs/SCALABILITY.md`).
+- Fallback: polling `GET /api/messages` (10s when Socket.IO is disconnected, 30s as a safety net when connected — see `planning/LESSON_PLAN.md` Module 17 for why the safety-net poll exists).
 
 ---
 
@@ -139,8 +140,10 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 - All authenticated routes require `Authorization: Bearer <token>` header
 - JWT verified via `authenticate` middleware; `req.account` populated with `{ accountId }` (email was removed from JWT payload in Refactor Pass 1 C4, 2026-06-20 — tokens issued before that deploy are rejected)
 - Passwords hashed with `bcryptjs` (10 salt rounds)
-- **Rate limiting:** `express-rate-limit` on `/auth/login` and `/auth/signup` (20 req / 15 min / IP), and on link-completion and contact-resolution endpoints (30 req / 15 min / IP)
+- **Rate limiting:** `express-rate-limit` on `/auth/login` and `/auth/signup` (20 req / 15 min / IP); on link-completion, contact-resolution, and `/provider/link/init` (30 req / 15 min / IP); on Telegram action routes `/request-code`, `/verify-code`, `/request-qr`, `/qr-2fa` (20 req / 15 min / IP — Pass 2 Correction)
 - **Login lockout:** after 8 consecutive failed attempts, the account is locked for 15 minutes (`Account.failedLoginAttempts` / `Account.lockedUntil`)
+- **Router-level authorization:** `authorize()` middleware added to all 21 owner-only (Group C) routes in Pass 2 Correction — asserts `req.account` is present after `authenticate`. Routes with a URL-identified resource use `authorize(resourceLoader)` which also verifies ownership against the loaded document.
+- **HTTP security headers:** `helmet@8.2.0` mounted as first middleware in `server.ts`; CSP disabled (Swagger page uses CDN scripts). All other helmet defaults active: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
 
 ---
 
@@ -152,7 +155,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 | POST | `/api/auth/login` | Rate-limited | Get JWT (lockout after 8 failed attempts) |
 | GET | `/api/auth/me` | Yes | Current account info |
 | DELETE | `/api/auth/account` | Yes | Delete account + all owned data |
-| GET | `/api/providers/status` | No | Provider readiness |
+| GET | `/api/providers/status` | Yes (JWT) | Provider readiness (Pass 2 Correction: added `authenticate + authorize()`) |
 | GET/POST | `/api/providers/telegram/webhook` | Secret token | Bot webhook (verify GET, receive POST) |
 | GET/POST | `/api/providers/whatsapp/webhook` | Secret (HMAC) | WA webhook (verify GET, receive POST) |
 | GET | `/api/messages` | Yes | Fetch messages |
@@ -165,25 +168,25 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 | GET | `/api/keys/:ownerId` | Yes (added C3, 2026-06-20 — was public; changed to prevent membership enumeration via email) | Fetch a public key |
 | GET | `/api/provider/connections` | Yes | List linked providers |
 | GET | `/api/provider/contact/search` | Yes + rate-limited | Find a contact by username/phone |
-| GET | `/api/provider/resolve` | Yes + rate-limited | Resolve a provider chat ID to an internal accountId |
+| GET | `/api/provider/resolve` | Admin token (`x-admin-token`) | Resolve a provider chat ID to an internal accountId — restricted in Pass 2 Correction; frontend never calls this |
 | DELETE | `/api/provider/connections/:id` | Yes | Remove a connection |
 | POST | `/api/provider/link/init` | Yes | Start bot link flow |
 | GET | `/api/provider/link/status/:code` | Yes (added C2, 2026-06-20 — was public; changed to require auth) | Poll link status |
 | POST | `/api/provider/link/complete` | Admin token + rate-limited | Server-side/admin link completion |
 | GET | `/api/telegram/direct/status` | Yes | MTProto: session status |
-| POST | `/api/telegram/direct/request-code` | Yes | MTProto: send phone code |
-| POST | `/api/telegram/direct/verify-code` | Yes | MTProto: verify + connect |
+| POST | `/api/telegram/direct/request-code` | Yes + rate-limited | MTProto: send phone code (`authRateLimiter`) |
+| POST | `/api/telegram/direct/verify-code` | Yes + rate-limited | MTProto: verify + connect (`authRateLimiter`) |
 | DELETE | `/api/telegram/direct/session` | Yes | MTProto: disconnect |
-| POST | `/api/telegram/direct/request-qr` | Yes | MTProto: start QR login |
-| GET | `/api/telegram/direct/qr-status` | Yes | MTProto: poll QR status |
-| POST | `/api/telegram/direct/qr-2fa` | Yes | MTProto: submit 2FA password |
+| POST | `/api/telegram/direct/request-qr` | Yes + rate-limited | MTProto: start QR login (`authRateLimiter`) |
+| GET | `/api/telegram/direct/qr-status` | Yes | MTProto: poll QR status (not rate-limited — polling) |
+| POST | `/api/telegram/direct/qr-2fa` | Yes + rate-limited | MTProto: submit 2FA password (`authRateLimiter`) |
 | POST | `/api/uploads/base64` | Yes | Upload via base64 JSON (≤10MB, image MIME allow-list) |
 | POST | `/api/uploads/formidable` | Yes | Upload via multipart (≤10MB; MIME allow-list unless `resourceType: raw`, i.e. encrypted) |
 | POST | `/api/admin/telegram/set-webhook` | Admin token | Set Telegram webhook URL |
 | POST | `/api/admin/telegram/delete-webhook` | Admin token | Delete Telegram webhook |
 | POST | `/api/admin/providers/test` | Admin token | Test provider send |
-| GET | `/api/openapi.json` | No | OpenAPI schema |
-| GET | `/api/docs` | No | Swagger UI |
+| GET | `/api/openapi.json` | No (dev) / JWT (prod) | OpenAPI schema — gated by `NODE_ENV === "production"` |
+| GET | `/api/docs` | No (dev) / JWT (prod) | Swagger UI — gated by `NODE_ENV === "production"` |
 
 ---
 
@@ -212,4 +215,6 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 
 **UI documentation note:** A full UI audit and refactor (Module 10) is pending. Frontend component details in this spec may not reflect final visual design after that pass.
 
-**Known gaps, not yet fixed (tracked in `AUDIT_CHANGELOG.md`):** `TELEGRAM_WEBHOOK_SECRET` and `WHATSAPP_APP_SECRET` being optional means webhook signature verification silently no-ops if either is left unset in a deployment — both should be required in production.
+**Known gaps, not yet fixed (tracked in `REFACTOR/AUDIT_CHANGELOG.md`):** `TELEGRAM_WEBHOOK_SECRET` and `WHATSAPP_APP_SECRET` being optional means webhook signature verification silently no-ops if either is left unset in a deployment — both should be required in production.
+
+**Pass 2 Correction (2026-06-20):** Router-level `authorize()` applied to all 21 owner-only routes. `GET /provider/resolve` changed to `requireAdmin`. Rate limiters extended to Telegram action routes and `/provider/link/init`. Swagger gated in production via `NODE_ENV`. Helmet added. See `REFACTOR/PASS2/REFACTOR_PASS_2_CORRECTION.md`.

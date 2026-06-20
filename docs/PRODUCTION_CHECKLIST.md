@@ -65,7 +65,7 @@
 | `WEBHOOK_ADMIN_TOKEN` | Random string (optional) |
 
 **Health check:**
-- Set health check path to `/api/providers/status` (returns 200 with no auth)
+- Set health check path to `/health` (returns 200 with no auth) — **not** `/api/providers/status`, which now requires JWT (Pass 2 Correction)
 
 ---
 
@@ -115,8 +115,8 @@
 - [ ] Rotate `JWT_SECRET` from any dev value
 - [ ] Rotate `DEMO_ENCRYPTION_KEY` from the hardcoded dev value (`0123456789abcdef...`)
 - [ ] Rotate `WEBHOOK_ADMIN_TOKEN`
-- [ ] Remove or restrict the Swagger UI (`/api/docs`) in production — it exposes the full API surface
-- [ ] Set `helmet` headers in Express (already included if `helmet` is in dependencies — verify)
+- [x] **Swagger UI gated in production** — `NODE_ENV === "production"` gates `/api/openapi.json` and `/api/docs` behind `authenticate`. Set `NODE_ENV=production` in Render env vars (already listed in Section 4). No extra step needed. (Pass 2 Correction, 2026-06-20)
+- [x] **Helmet HTTP headers installed** — `helmet@8.2.0` wired in `server.ts` as first middleware. CSP disabled (Swagger page uses CDN). All other defaults active. (Pass 2 Correction, 2026-06-20)
 - [ ] Confirm MongoDB Atlas IP allowlist is not wider than necessary
 - [ ] Review CORS_ORIGIN — must not be `*` in production
 

@@ -1,8 +1,10 @@
 # Maintainer Guide
 
+_Last updated: 2026-06-20 (after Refactor Pass 2 Correction)_
+
 ## What This System Does
 
-Crypt Companion is a web companion app demo that ingests provider messages, applies optional encryption/decryption logic, stores events in MongoDB, and pushes updates to web clients in realtime.
+Crypt Companion is a secure messaging companion app that ingests provider messages (Telegram MTProto + Bot API, WhatsApp Cloud API), applies optional E2E encryption/decryption logic, stores events in MongoDB, and pushes updates to web clients in realtime. Authentication uses JWT Bearer tokens with per-account Socket.IO rooms.
 
 ## Runtime Components
 
@@ -24,14 +26,30 @@ Create `backend/.env` from `backend/.env.example`:
 
 ## API Surface
 
-- `GET /health`: service health
-- `GET /api/messages`: message query (supports `provider`, `chatId`, `since`, `limit`)
-- `GET /api/conversations`: provider inbox summaries, secure/plain counts, and latest message previews
-- `POST /api/messages/send`: creates outbound event and emits realtime update
-- `POST /api/providers/telegram/webhook`: Telegram inbound webhook
-- `GET /api/providers/whatsapp/webhook`: WhatsApp verification endpoint
-- `POST /api/providers/whatsapp/webhook`: WhatsApp inbound webhook
-- `GET /api/providers/status`: provider readiness, setup notes, and browser web-client links
+See `CRYPT_SPECS.md` for the full 30-route table. Summary:
+
+**Public (no token):**
+- `GET /health` — service health check (use this for Render health check, not `/providers/status`)
+- `POST /api/auth/signup`, `POST /api/auth/login` — rate-limited
+- Telegram/WhatsApp webhooks — own secret verification inside controllers
+
+**JWT only (authenticate):**
+- `GET /api/auth/me`, `DELETE /api/auth/account`
+- `GET /api/messages`, `GET /api/conversations`, `POST /api/messages/send`, `DELETE /api/messages/conversation`, `DELETE /api/messages/all`
+- `GET /api/providers/status` — requires JWT (changed in Pass 2 Correction)
+- `GET /api/provider/connections`, `GET /api/provider/contact/search`
+- `GET /api/provider/link/status/:code`
+- `GET /api/keys/:ownerId`
+- All `/api/telegram/direct/*` routes (action routes also rate-limited)
+- `POST /api/uploads/base64`, `POST /api/uploads/formidable`
+
+**Admin token (`x-admin-token: $WEBHOOK_ADMIN_TOKEN`):**
+- `POST /api/admin/telegram/set-webhook`, `POST /api/admin/telegram/delete-webhook`, `POST /api/admin/providers/test`
+- `POST /api/provider/link/complete`
+- `GET /api/provider/resolve`
+
+**Conditional (JWT in production, open locally):**
+- `GET /api/openapi.json`, `GET /api/docs` — gated by `NODE_ENV === "production"`
 
 ## Operational Checklist
 
@@ -199,5 +217,4 @@ If you prefer a single server deployment, the frontend build can be served from 
 
 - Replace placeholder provider outbound behavior in `messages.route.ts` with actual API calls.
 - Add attachment upload flow (cloud storage + signed URLs) instead of URL-only image attachments.
-- Add auth middleware and chat ownership checks before enabling multi-user access.
 - Add richer inbox grouping if you want separate secure/standard folders per provider.

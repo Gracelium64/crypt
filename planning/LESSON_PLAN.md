@@ -209,7 +209,7 @@ What happens to messages sent to a connected Telegram account while the server i
 
 **Server side: `services/realtime.service.ts` (35 lines)**  
 Two things: attach to HTTP server, broadcast to all connected clients.  
-**Refactor Pass 1 (C9, 2026-06-20):** per-account Socket.IO rooms added. Clients emit `join:account` on connect; server emits to `io.to(accountId)` instead of `io.emit()`. No socket-level auth token check (rooms are trusted on the client's own declaration). See `CRYPT_SPECS.md` and `SCALABILITY.md` for details and remaining limitations.
+**Refactor Pass 1 (C9, 2026-06-20):** per-account Socket.IO rooms added. Clients emit `join:account` on connect; server emits to `io.to(accountId)` instead of `io.emit()`. No socket-level auth token check (rooms are trusted on the client's own declaration). See `CRYPT_SPECS.md` and `docs/SCALABILITY.md` for details and remaining limitations.
 
 **Client side: `hooks/useRealtime.ts` (34 lines)**  
 Flutter analogy: a `StreamSubscription` that you `.cancel()` in `dispose()`.
@@ -1424,7 +1424,7 @@ You could delete `backend/Dockerfile` today and the live Render deployment would
 
 ## Module 21 — Security & Redundancy Hardening Session (2026-06-16)
 
-A full audit-and-fix session: security audit, dead-code audit, scalability writeup, and a spec-accuracy check, followed by implementing the specific fixes approved. Full detail (every file touched, restoration notes) lives in `AUDIT_CHANGELOG.md` — this module covers the *why* and the judgment calls, in the same case-study format as Modules 11-17.
+A full audit-and-fix session: security audit, dead-code audit, scalability writeup, and a spec-accuracy check, followed by implementing the specific fixes approved. Full detail (every file touched, restoration notes) lives in `REFACTOR/AUDIT_CHANGELOG.md` — this module covers the *why* and the judgment calls, in the same case-study format as Modules 11-17.
 
 ---
 
@@ -1514,7 +1514,83 @@ User clicks Send
 
 ---
 
-## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
+## Module 23 — Security Remediation: Router-Level Authorization (2026-06-20)
+
+Full security audit + remediation pass. Full detail in `REFACTOR/PASS2/REFACTOR_PASS_2_CORRECTION.md`. This module covers the security model, the gap that was closed, and the implementation decisions.
+
+---
+
+### Part A — The Gap: authentication ≠ authorization
+
+After Refactor Pass 1, all protected routes had `authenticate` middleware — which proves *who* the caller is. None of them had `authorize` middleware — which proves *the caller owns the resource they're touching*.
+
+The distinction:
+- `authenticate`: "your JWT is valid, I know you're accountId X"
+- `authorize`: "accountId X owns the resource this route is operating on"
+
+Without `authorize`, any valid JWT from any user could call `DELETE /auth/account` and it would delete *that user's account*, not someone else's — because the controller was responsible for the ownership check. But that controller-level check only fired *after* the route was reached. This is a defense-in-depth gap: the route itself has no protection.
+
+**Security principle:** protect at the outermost layer you control. Route middleware runs before the controller. If the route is wrong for this caller, don't reach the controller at all.
+
+---
+
+### Part B — The `authorize()` extension
+
+The existing `authorize(loader)` middleware fetches a resource and checks ownership. To support routes with no URL-identified resource (e.g. `GET /auth/me`, `GET /messages`, all of which are "my own data"), `authorize` was extended to support a no-argument call:
+
+```ts
+authorize()        // self-authorization: asserts req.account exists, calls next()
+authorize(loader)  // resource-ownership: fetches resource, checks owner
+```
+
+Both paths first check `req.account` — so `authorize()` alone is not a substitute for `authenticate`, but a complement: it asserts that `authenticate` ran and populated `req.account`.
+
+**Pattern:** `authenticate` = "who are you?", `authorize()` = "confirm you're authenticated and this is your endpoint", `authorize(loader)` = "confirm you own this specific resource".
+
+---
+
+### Part C — The dead endpoint
+
+`GET /provider/resolve` resolves a provider chat ID (Telegram user ID / WhatsApp phone) to an internal Crypt `accountId`. No frontend code calls this — confirmed by `grep -rn "provider/resolve" frontendReactJs/`. The backend resolves fan-out internally via direct DB queries, not via this HTTP endpoint.
+
+With any valid JWT, a user could enumerate whether any given Telegram/WhatsApp contact is a Crypt user by brute-forcing chat IDs. This is membership enumeration.
+
+Fix: `requireAdmin` replaces `authenticate` — the endpoint is now admin-only, not user-accessible.
+
+**Pattern:** Endpoints with no legitimate user-facing caller should not be user-accessible. "An authenticated user isn't a bad actor" is not a security property — it's an assumption about expected behavior.
+
+---
+
+### Part D — Rate limiting coverage gap
+
+The 2026-06-16 audit added rate limiting to auth and link endpoints. It missed the Telegram direct auth endpoints — `request-code`, `verify-code`, `request-qr`, `qr-2fa`. These all trigger external Telegram API calls and/or phone number operations. An unthrottled caller could:
+- Trigger phone code delivery spam (Telegram penalizes apps for this)
+- Brute-force the verify-code step
+
+**What was not rate-limited:** `GET /direct/status` and `GET /qr-status`. These are in-memory reads. At 4-second QR polling, rate-limiting `qr-status` at 20 req/15 min would block login in ~80 seconds of normal use. Rate limiters should protect resources, not lock out legitimate flows.
+
+---
+
+### Part E — Swagger as a honeypot
+
+The Swagger UI (`/api/docs`) and OpenAPI spec (`/api/openapi.json`) expose the full API surface — every route, its parameters, its request/response shapes. In a private deployment, this is a recon tool for anyone who can reach the server.
+
+Fix: `process.env.NODE_ENV === "production"` gates both routes behind `authenticate`. Locally (dev, `NODE_ENV` unset), they're open — ergonomics. In production (Render, `NODE_ENV=production` set), they require a valid JWT.
+
+**Why CSP is still disabled:** Swagger UI loads from `unpkg.com` CDN and uses inline `<script>` tags. Helmet's default Content-Security-Policy blocks both. Since Swagger is the only HTML page, disabling CSP for it via `helmet({ contentSecurityPolicy: false })` is the correct scope trade-off — all other helmet headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy) remain active.
+
+---
+
+### Key questions for this module
+
+1. `authenticate` middleware runs first and confirms the JWT is valid. Why is `authorize()` still needed after that? What additional claim does it make that `authenticate` alone cannot?
+2. `GET /auth/me` returns the caller's own account info. The controller already uses `req.account.accountId` to scope the response — it's impossible for it to return another user's data. So why does `authorize()` still add value here?
+3. `GET /provider/resolve` was changed from `authenticate` to `requireAdmin`. What was the security risk of leaving it as `authenticate`?
+4. Why were `GET /direct/status` and `GET /qr-status` not rate-limited, even though the other 5 Telegram routes were?
+5. Swagger's `prodGuard` is `process.env.NODE_ENV === "production" ? [authenticate] : []`. What happens in a Render deployment if `NODE_ENV` is not set? Is the Swagger UI exposed or not?
+6. `helmet({ contentSecurityPolicy: false })` disables CSP globally. Name three other HTTP security headers that helmet still sets by default, and what each one does.
+
+---
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
 
@@ -1611,6 +1687,7 @@ MODULE STATUS:
 [x*] Module 19 - CORS deep dive — executed 2026-06-16, SKIM PENDING (mostly historical, see Module 21 fix)
 [x*] Module 20 - Docker & containerization (is it needed?) — executed 2026-06-16, SKIM PENDING
 [x*] Module 21 - Security & redundancy hardening session — executed 2026-06-16, CORE REVIEW PENDING
+[x*] Module 23 - Security remediation: router-level authorization — executed 2026-06-20, CORE REVIEW PENDING
 
 [x*] = work was done by Claude under Grace's supervision and documented, but NOT yet reviewed/understood by Grace. Do not treat as taught until the review pass happens.
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)

@@ -30,11 +30,10 @@ MVP demo stack:
 - `frontendReactJs/`: web companion app UI
 - `frontendReactNative/`: phase 2 placeholder
 - `frontendFlutter/`: phase 2 placeholder
-- `docs/`: maintainer and learner guides
+- `docs/`: maintainer and learner guides + `PRODUCTION_CHECKLIST.md`, `SCALABILITY.md`
+- `planning/`: `PROJECT_ROADMAP.md`, `LESSON_PLAN.md`, `REBUILD_EXERCISES.md`, `DEADLINE220626.md`
+- `REFACTOR/`: refactor history — `AUDIT_CHANGELOG.md`, `PASS1/`, `PASS2/`
 - `CRYPT_SPECS.md`: full technical spec (stack, routes, encryption, env vars)
-- `SCALABILITY.md`: current scaling limits and what real production scale requires
-- `AUDIT_CHANGELOG.md`: dated log of security/cleanup changes with restoration notes — check this first when debugging something unexpected
-- `LESSON_PLAN.md`: guided codebase walkthrough
 
 ## Quick Start
 

@@ -72,7 +72,7 @@ Authorization: Bearer {{token}}
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/api/providers/status` | No | Healthcheck |
+| GET | `/api/providers/status` | Yes (JWT) | Provider readiness — requires Bearer token (Pass 2 Correction) |
 | GET | `/api/providers/telegram/webhook` | Secret token | Webhook verification (GET) |
 | POST | `/api/providers/telegram/webhook` | Secret token | Inbound update |
 | GET | `/api/providers/whatsapp/webhook` | HMAC secret | Webhook verification (GET) |
@@ -100,9 +100,9 @@ Authorization: Bearer {{token}}
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/api/provider/connections` | Yes | List linked providers |
+| GET | `/api/provider/connections` | Yes (JWT) | List linked providers |
 | GET | `/api/provider/contact/search` | Yes + rate-limited | `?provider=...&query=...` |
-| GET | `/api/provider/resolve` | Yes + rate-limited | `?provider=...&chatId=...` |
+| GET | `/api/provider/resolve` | Admin token (`x-admin-token`) | `?provider=...&chatId=...` — restricted in Pass 2 Correction |
 | DELETE | `/api/provider/connections/:id` | Yes | Remove a connection |
 | POST | `/api/provider/link/init` | Yes | `{ provider }` → returns `code` |
 | GET | `/api/provider/link/status/:code` | Yes | Poll until `completed: true` |
@@ -118,13 +118,13 @@ Authorization: Bearer {{token}}
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/api/telegram/direct/status` | Yes | MTProto session status |
-| POST | `/api/telegram/direct/request-code` | Yes | `{ phoneNumber }` |
-| POST | `/api/telegram/direct/verify-code` | Yes | `{ phoneNumber, code, phoneCodeHash }` |
-| DELETE | `/api/telegram/direct/session` | Yes | Disconnect |
-| POST | `/api/telegram/direct/request-qr` | Yes | Starts QR login (no body) |
-| GET | `/api/telegram/direct/qr-status` | Yes | Poll for `{ token, step }` |
-| POST | `/api/telegram/direct/qr-2fa` | Yes | `{ password }` when step = "2fa" |
+| GET | `/api/telegram/direct/status` | Yes (JWT) | MTProto session status |
+| POST | `/api/telegram/direct/request-code` | Yes + rate-limited | `{ phoneNumber }` — `authRateLimiter` (20 req/15 min) |
+| POST | `/api/telegram/direct/verify-code` | Yes + rate-limited | `{ phoneNumber, code, phoneCodeHash }` — `authRateLimiter` |
+| DELETE | `/api/telegram/direct/session` | Yes (JWT) | Disconnect |
+| POST | `/api/telegram/direct/request-qr` | Yes + rate-limited | Starts QR login (no body) — `authRateLimiter` |
+| GET | `/api/telegram/direct/qr-status` | Yes (JWT) | Poll for `{ token, step }` — NOT rate-limited (polling) |
+| POST | `/api/telegram/direct/qr-2fa` | Yes + rate-limited | `{ password }` when step = "2fa" — `authRateLimiter` |
 
 ### Uploads
 
@@ -145,8 +145,8 @@ Authorization: Bearer {{token}}
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/api/openapi.json` | No | Import this into Postman |
-| GET | `/api/docs` | No | Swagger UI |
+| GET | `/api/openapi.json` | No (local) / JWT (production) | Import this into Postman; gated by `NODE_ENV === "production"` |
+| GET | `/api/docs` | No (local) / JWT (production) | Swagger UI; gated by `NODE_ENV === "production"` |
 
 ---
 

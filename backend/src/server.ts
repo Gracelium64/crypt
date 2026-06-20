@@ -1,6 +1,7 @@
 import http from "node:http";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import "#db";
 import { env, parseOrigins } from "#config";
 import {
@@ -21,6 +22,7 @@ import { notFoundHandler, errorHandler } from "#middleware";
 
 const app = express();
 
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
   cors({
     origin: parseOrigins(env.CORS_ORIGIN),

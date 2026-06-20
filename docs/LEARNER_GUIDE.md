@@ -64,6 +64,7 @@ Build a live messaging demo with two key patterns:
 2. Add delivery status field (`queued`, `sent`, `failed`) to message schema and render it.
 3. Add simple retry endpoint for failed outbound provider sends.
 4. Replace the demo simulation with one real Telegram test webhook flow.
+5. Add a resource-loader to the `authorize()` call on `POST /messages/send` to verify the sender's `ProviderConnection` exists before hitting the controller.
 
 ## Interview-Framing Style Summary (Optional)
 

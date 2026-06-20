@@ -8,10 +8,15 @@ type OwnedResource = {
 
 type ResourceLoader = (req: Request) => Promise<OwnedResource | null>;
 
-export const authorize = (getResource: ResourceLoader): RequestHandler => {
+export const authorize = (getResource?: ResourceLoader): RequestHandler => {
   return async (req, _res, next) => {
     if (!req.account) {
       next(new Error("Unauthorized", { cause: { status: 401 } }));
+      return;
+    }
+
+    if (!getResource) {
+      next();
       return;
     }
 

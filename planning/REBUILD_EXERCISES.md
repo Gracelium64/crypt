@@ -1,6 +1,6 @@
 # Rebuild Exercises (Post-Deadline)
 
-**Start after:** 2026-06-24 project submission  
+**Start after:** 2026-06-24 project submission (or after Pass 3)  
 **Goal:** Rebuild the core of this app from memory to confirm full understanding  
 **Frontend target:** React Native (not React web — see Phase B below)
 
@@ -13,7 +13,7 @@ Without looking at the source, build:
 1. `server.ts` — Express + CORS + `express.json()` + `/health` + all routers mounted at `/api` + Socket.IO init + DB connect in bootstrap
 2. `models/message.ts` — Mongoose schema: provider, direction, from, to, chatId, encryptedText, deliveryStatus, accountId, attachments
 3. `routes/messages.route.ts` — GET list (filter by accountId), POST create + broadcast
-4. `routes/auth.route.ts` — register, login, logout, `/me` with JWT middleware
+4. `routes/auth.route.ts` — register, login, logout, `/me` with `authenticate` and `authorize()` middleware
 5. `services/crypto.service.ts` — AES-GCM encrypt/decrypt with `[CRYPT:v1]` prefix marker
 6. `services/realtime.service.ts` — initRealtime + broadcastMessage
 

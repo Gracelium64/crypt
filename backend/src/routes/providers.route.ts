@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "#middleware";
+import { authenticate, authorize } from "#middleware";
 import {
   getProviderStatus,
   telegramWebhookVerify,
@@ -10,7 +10,7 @@ import {
 
 export const providersRouter = Router();
 
-providersRouter.get("/providers/status", authenticate, getProviderStatus);
+providersRouter.get("/providers/status", authenticate, authorize(), getProviderStatus);
 providersRouter.get("/providers/telegram/webhook", telegramWebhookVerify);
 providersRouter.post("/providers/telegram/webhook", telegramWebhook);
 providersRouter.get("/providers/whatsapp/webhook", whatsappWebhookVerify);

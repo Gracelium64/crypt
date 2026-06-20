@@ -42,10 +42,12 @@ Primary user flows
    - Provider inbound webhooks (Telegram/WhatsApp) must be set up to deliver incoming messages to the backend; inbound messages are stored as `inbound` and broadcast via Socket.IO to connected frontends.
    - On receive, the frontend attempts client-side decryption with locally stored private key and the sender's public key from the directory.
 
-UI Note
+CSS Architecture Note
 
-> **Module 10 (UI rework) pending.** A full UI audit and refactor pass is planned post-Refactor Pass 1. Until that module is completed, UI documentation in this file may not reflect the final visual design. See `LESSON_PLAN.md` Module 10 for scope.
+> **Refactor Pass 2 (2026-06-20) complete.** `App.css` was split into 13 scoped CSS files under `frontendReactJs/src/styles/`. 122 inline `style={}` props extracted. The visual design is unchanged — this was a structural refactor only.
 
 Limitations / Notes
 
-- Public provider webhooks and real provider credentials are required for full end-to-end integration. Local runs can be exercised via the provided smoke-test script, but true receive/send requires live credentials. See DEADLINE220626.md for details.
+- Public provider webhooks and real provider credentials are required for full end-to-end integration. Local runs can be exercised via the provided smoke-test script, but true receive/send requires live credentials. See planning/DEADLINE220626.md for details.
+
+**Authorization note:** All non-public routes require `Authorization: Bearer <token>`. Owner-only routes also enforce router-level `authorize()` middleware (Pass 2 Correction, 2026-06-20). The only routes accessible without a JWT are: `/health`, `/api/auth/signup`, `/api/auth/login`, provider webhooks, and `/api/openapi.json`/`/api/docs` (in non-production environments).

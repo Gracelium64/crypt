@@ -30,15 +30,20 @@ This is the one item that can't be incrementally patched — it requires an arch
 
 ## Missing index on the hottest query path
 
-`ProviderConnection.providerChatId` (`backend/src/models/providerConnection.ts`) has no index — only `username` does. This field is looked up on **every single inbound webhook event and every outbound fan-out check** (the exact query that caused the "ghost connection" bug documented in `LESSON_PLAN.md` Module 17). Fine at current data volume; becomes a full collection scan as the `providerconnections` collection grows. Low-effort, high-value fix whenever this file is next touched: add `index: true` to that field.
+`ProviderConnection.providerChatId` (`backend/src/models/providerConnection.ts`) has no index — only `username` does. This field is looked up on **every single inbound webhook event and every outbound fan-out check** (the exact query that caused the "ghost connection" bug documented in `planning/LESSON_PLAN.md` Module 17). Fine at current data volume; becomes a full collection scan as the `providerconnections` collection grows. Low-effort, high-value fix whenever this file is next touched: add `index: true` to that field.
 
 ## No caching layer, no job queue
 
 Cloudinary uploads, Telegram `sendCode()` calls, and all DB writes run inline in the request/response cycle. A slow upstream call (Telegram, Meta, Cloudinary) blocks that request's event-loop turn. Fine at low concurrency. At real scale, long-running operations (especially file uploads and MTProto auth) would benefit from being offloaded to a background job queue (e.g. BullMQ) rather than held open in the HTTP request.
 
-## No rate limiting (cross-reference: security audit)
+## Rate limiting — current coverage
 
-Already flagged as a security gap, but it's equally a scalability/cost-protection one — nothing currently stops a single client from hammering the database or burning Cloudinary/WhatsApp API quota. (Addressed in this session — see `AUDIT_CHANGELOG.md`.)
+Rate limiting was introduced in the 2026-06-16 security audit (see `REFACTOR/AUDIT_CHANGELOG.md`) and extended in Pass 2 Correction (2026-06-20). Current coverage:
+
+- `authRateLimiter` (20 req / 15 min / IP): `/auth/login`, `/auth/signup`, and the 4 Telegram action routes (`/request-code`, `/verify-code`, `/request-qr`, `/qr-2fa`)
+- `linkRateLimiter` (30 req / 15 min / IP): `/provider/link/init`, `/provider/link/complete`, `/provider/contact/search`
+
+Still unprotected at the rate-limiter level: `/api/messages`, `/api/keys/register`, `/api/uploads/*`. These hit the database and Cloudinary on every call. At demo scale this is fine; at real production scale each should have a per-account limiter (not just per-IP) to cap DB writes and Cloudinary quota burn per user.
 
 ## No observability
 

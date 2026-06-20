@@ -66,5 +66,5 @@ Nothing in this session was committed to git by Claude — every change below is
 
 - `CRYPT_SPECS.md` — rewritten to match actual current code (stack versions, full 38-route table, WhatsApp marked shipped, ciphertext prefix corrected to `[CRYPT:v1]`, key-backup limitation removed since it's already fixed, missing env vars added).
 - `README.md` — fixed `cp .env.example` → `cp backend/env.example` (the example file has no leading dot; the old instructions didn't actually work), corrected `JWT_SECRET` from "optional" to required, added the new security hardening items to the feature list, added a pointer to the root-level docs.
-- `SCALABILITY.md` — new, see file for the full writeup (in-memory MTProto session state blocking horizontal scaling, Socket.IO needing a cross-instance adapter, the missing `providerChatId` index, etc.).
-- `LESSON_PLAN.md` — new module appended documenting this session (see Module 21).
+- `docs/SCALABILITY.md` — new, see file for the full writeup (in-memory MTProto session state blocking horizontal scaling, Socket.IO needing a cross-instance adapter, the missing `providerChatId` index, etc.).
+- `planning/LESSON_PLAN.md` — new module appended documenting this session (see Module 21).
