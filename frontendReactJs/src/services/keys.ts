@@ -15,7 +15,7 @@ export const generateKeypair = async (localOwnerId: string) => {
 
   const pubRaw = await crypto.subtle.exportKey("raw", kp.publicKey);
   const pubB64 = arrayBufferToBase64(pubRaw);
-  const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+  const privJwk = EcdhPrivateJwkSchema.parse(await crypto.subtle.exportKey("jwk", kp.privateKey));
 
   try {
     localStorage.setItem(`crypt:priv:${localOwnerId}`, JSON.stringify(privJwk));

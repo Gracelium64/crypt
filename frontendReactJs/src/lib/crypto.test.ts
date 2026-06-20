@@ -4,6 +4,7 @@ import {
   encryptForRecipient,
   decryptFromSender,
 } from "./crypto";
+import { EcdhPrivateJwkSchema } from "../schemas";
 
 describe("crypto E2E", () => {
   it("encrypts and decrypts between two keypairs", async () => {
@@ -27,13 +28,11 @@ describe("crypto E2E", () => {
     const senderPubB64 = arrayBufferToBase64(senderPubRaw);
     const recipientPubB64 = arrayBufferToBase64(recipientPubRaw);
 
-    const senderPrivJwk = await crypto.subtle.exportKey(
-      "jwk",
-      sender.privateKey,
+    const senderPrivJwk = EcdhPrivateJwkSchema.parse(
+      await crypto.subtle.exportKey("jwk", sender.privateKey),
     );
-    const recipientPrivJwk = await crypto.subtle.exportKey(
-      "jwk",
-      recipient.privateKey,
+    const recipientPrivJwk = EcdhPrivateJwkSchema.parse(
+      await crypto.subtle.exportKey("jwk", recipient.privateKey),
     );
 
     const plain = "hello vitest";
