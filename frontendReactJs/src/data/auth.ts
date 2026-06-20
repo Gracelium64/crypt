@@ -6,7 +6,7 @@ const parseError = async (res: Response, fallback: string): Promise<string> => {
   try {
     const data = await res.json();
     return typeof data?.error === "string" ? data.error : fallback;
-  } catch { /* resp.json() parse failure — return caller's fallback error string */ }
+  } catch { /* non-fatal: resp.json() parse failure — return caller's fallback error string */ }
   return fallback;
 };
 

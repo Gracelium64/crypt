@@ -3,7 +3,8 @@ import KeyManager from "@/components/KeyManager";
 import ConnectTelegram from "@/components/ConnectTelegram";
 import ConnectWhatsApp from "@/components/ConnectWhatsApp";
 import ConnectionsPanel from "@/components/ConnectionsPanel";
-import type { Provider } from "@/types";
+import type { EcdhPrivateJwk } from "@/lib/crypto";
+import type { Connection, Provider } from "@/types";
 
 const providerMeta: Record<Provider, { label: string; icon: string }> = {
   telegram: { label: "Telegram", icon: "✈️" },
@@ -15,13 +16,13 @@ type Props = {
   localOwnerId: string;
   setLocalOwnerId: (v: string) => void;
   pubKeyB64: string | null;
-  privJwk: unknown;
+  privJwk: EcdhPrivateJwk | null;
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
   generateAndRegisterKeypair: () => Promise<void>;
-  setPrivJwk: (v: unknown) => void;
-  connections: unknown[];
+  setPrivJwk: (v: EcdhPrivateJwk | null) => void;
+  connections: Connection[];
   connectionsBusy: boolean;
   loadConnectionsList: () => Promise<void>;
   deleteConnection: (id: string) => Promise<void>;

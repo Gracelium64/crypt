@@ -22,6 +22,9 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
+const mimeToCloudinaryResourceType = (mime: string): "image" | "raw" =>
+  mime.startsWith("image/") ? "image" : "raw";
+
 export const uploadBase64: RequestHandler = async (req, res, next) => {
   const dataUrl = req.body?.dataUrl;
   if (!dataUrl || typeof dataUrl !== "string") {
@@ -52,7 +55,8 @@ export const uploadBase64: RequestHandler = async (req, res, next) => {
       next(new Error("File content type not permitted", { cause: { status: 400 } }));
       return;
     }
-    const url = await uploadBufferToCloudinary(buffer, "image", "uploads");
+    const resourceType = mimeToCloudinaryResourceType(detected.mime);
+    const url = await uploadBufferToCloudinary(buffer, resourceType, "uploads");
     res.status(201).json({ ok: true, url });
   } catch (error) {
     next(error);

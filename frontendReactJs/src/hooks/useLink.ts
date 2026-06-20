@@ -21,13 +21,13 @@ const isMobileDevice = () =>
 const savePending = (d: SavedLink) => {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(d));
-  } catch { /* sessionStorage blocked (private mode / cross-origin) */ }
+  } catch { /* non-fatal: sessionStorage blocked (private mode / cross-origin) */ }
 };
 
 const clearPending = () => {
   try {
     sessionStorage.removeItem(SESSION_KEY);
-  } catch { /* sessionStorage blocked (private mode / cross-origin) */ }
+  } catch { /* non-fatal: sessionStorage blocked (private mode / cross-origin) */ }
 };
 
 const loadPending = (): SavedLink | null => {
@@ -40,7 +40,7 @@ const loadPending = (): SavedLink | null => {
       return null;
     }
     return d;
-  } catch { /* corrupted sessionStorage — treat as no pending link */ }
+  } catch { /* non-fatal: corrupted sessionStorage — treat as no pending link */ }
   return null;
 };
 

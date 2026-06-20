@@ -8,7 +8,7 @@
 
 ## Summary
 
-Pass 1 addressed 16 refactor items (Phase C), 3 doc additions (Phase A), and 12 post-refactor doc updates (Phase D). Two items deferred to Pass 2: CSS refactor (C13+C14, needs screenshot baselines) and CODEBOOK.md (D8, outline approved and documented below).
+Pass 1 addressed 16 refactor items (Phase C), 3 doc additions (Phase A), and 12 post-refactor doc updates (Phase D). Two items deferred: CSS refactor (C13+C14) deferred to Pass 2 (needs screenshot baselines); CODEBOOK.md (D8, outline approved below) deferred to Pass 3.
 
 ---
 
@@ -56,7 +56,7 @@ Pass 1 addressed 16 refactor items (Phase C), 3 doc additions (Phase A), and 12 
 | D5 | `CRYPT_SPECS.md` — JWT shape, auth columns, Socket.IO rooms, `encryptText`, logs collection, `file-type` |
 | D6 | `SCALABILITY.md` — C9 rooms note in Socket.IO section |
 | D7 | Deleted `CLAUDE_HANDOFF_OFFLINE.md` + `HANDOFF-2026-05-30.md` |
-| D8 | DEFERRED to Pass 2 — outline approved (8 chapters; see below) |
+| D8 | DEFERRED to Pass 3 — outline approved (8 chapters; see below) |
 | D9 | `FUNCTIONALITY.md` + `CRYPT_SPECS.md` — Module 10 placeholders added |
 | D10 | `docs/POSTMAN_TESTING.md` created — full route reference + honeypot section |
 | D11 | `README.md` — `DEMO_ENCRYPTION_KEY` desc updated (C1); `SE_CRETS_MASTER_KEY` no-callers note; signup curl fixed (password 8-24 chars, optional `displayName`) |
@@ -67,6 +67,8 @@ Pass 1 addressed 16 refactor items (Phase C), 3 doc additions (Phase A), and 12 
 
 ### C13 + C14 — CSS Refactor
 Inline styles in `KeyManager.tsx` and `Timeline.tsx` are candidates for extraction into CSS classes. Grace will supply screenshot baselines before Pass 2 begins.
+
+## Deferred to Pass 3
 
 ### D8 — docs/CODEBOOK.md (outline approved)
 

@@ -163,7 +163,7 @@ function AppContent() {
           { name: "ECDH", namedCurve: "P-256" },
           false, ["deriveKey", "deriveBits"],
         );
-        setPrivJwk(jwk);
+        setPrivJwk(jwk as EcdhPrivateJwk);
         setPubKeyB64(pub);
         localStorage.setItem(`crypt:priv:${email}`, JSON.stringify(jwk));
         localStorage.setItem(`crypt:pub:${email}`, pub);
@@ -188,9 +188,10 @@ function AppContent() {
         const storedPriv = localStorage.getItem(`crypt:priv:${email}`);
         const storedPub = localStorage.getItem(`crypt:pub:${email}`);
         if (storedPriv && storedPub) {
-          let jwk: unknown;
-          try { jwk = JSON.parse(storedPriv); } catch { jwk = null; }
-          if (jwk && await tryLoadJwk(jwk, storedPub)) return;
+          const rawJwk = (() => { try { return JSON.parse(storedPriv); } catch { /* ignore */ return null; } })();
+          const jwkParsed = EcdhPrivateJwkSchema.safeParse(rawJwk);
+          if (jwkParsed.success && await tryLoadJwk(jwkParsed.data, storedPub)) return;
+          else if (!jwkParsed.success && rawJwk) console.error("[App] stored private key failed validation:", jwkParsed.error);
           localStorage.removeItem(`crypt:priv:${email}`);
           localStorage.removeItem(`crypt:pub:${email}`);
         }
@@ -349,7 +350,10 @@ function AppContent() {
       if (replyMode === "secure" && !localPriv && localOwnerId) {
         const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
         if (stored) {
-          try { localPriv = JSON.parse(stored); setPrivJwk(localPriv); } catch { /* ignore */ }
+          const rawStored = (() => { try { return JSON.parse(stored); } catch { /* ignore */ return null; } })();
+          const storedParsed = EcdhPrivateJwkSchema.safeParse(rawStored);
+          if (storedParsed.success) { localPriv = storedParsed.data; setPrivJwk(storedParsed.data); }
+          else if (rawStored) console.error("[App] handleSend stored key failed validation:", storedParsed.error);
         }
       }
 

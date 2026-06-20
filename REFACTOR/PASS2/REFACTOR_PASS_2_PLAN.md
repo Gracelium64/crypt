@@ -7,8 +7,8 @@
 
 ## Overview
 
-Pass 2 has three parts:
-1. **Carry-over from Pass 1** — two items explicitly deferred pending external input (screenshot baselines, CODEBOOK outline)
+Pass 2 has two parts:
+1. **Carry-over from Pass 1** — CSS refactor (C13+C14), deferred pending screenshot baselines. CODEBOOK.md (D8) moved to Pass 3.
 2. **DB migration instructions** — step-by-step for the C4 key migration (for Grace to run before deploying to production)
 3. **Deployment order** — exact sequence for shipping the full refactor to Render
 
@@ -54,24 +54,9 @@ frontendReactJs/src/styles/
 
 ---
 
-### P2-B: CODEBOOK.md (was D8)
+### P2-B: CODEBOOK.md — MOVED TO PASS 3
 
-**File:** `docs/CODEBOOK.md`  
-**Status:** Outline approved in `REFACTOR_PASS_1_REPORT.md`. Write the full document.
-
-**Chapter structure (approved outline):**
-```
-Chapter 1 — Authentication & JWT
-Chapter 2 — Mongoose Models & Type Inference
-Chapter 3 — ECDH Key Exchange & AES-GCM Encryption
-Chapter 4 — Socket.IO Realtime (per-account rooms)
-Chapter 5 — Telegram Integration Patterns
-Chapter 6 — Provider Link Flow
-Chapter 7 — Media Uploads
-Chapter 8 — Structured Logging
-```
-
-Each chapter: architecture summary, file map, Mermaid diagram (sequence or flow), code references, known gaps.
+`docs/CODEBOOK.md` (D8) has been deferred to Pass 3. The approved 8-chapter outline is recorded in `REFACTOR_PASS_1_REPORT.md`.
 
 ---
 
@@ -242,6 +227,6 @@ This is the exact deploy sequence once the full refactor (Pass 1 + Pass 2) is ap
 | # | Item | Prereq |
 |---|------|--------|
 | P2-A | CSS refactor | Grace supplies screenshots |
-| P2-B | CODEBOOK.md | After P2-A complete |
+| P2-B | CODEBOOK.md | **MOVED TO PASS 3** |
 | Migration | Run C4 key migration | After all code changes merged |
 | Deploy | Render deployment | After migration complete |

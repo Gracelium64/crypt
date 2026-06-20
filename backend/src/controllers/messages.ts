@@ -19,10 +19,8 @@ const isSecureMessage = (message: { encryptedText?: string | null }) =>
   isMarkedCiphertext(message.encryptedText ?? "");
 
 export const getMessages: RequestHandler = async (req, res, next) => {
-  const parsed = (req as any).validatedQuery as MessagesQuery | undefined;
-  const query_raw = parsed ?? req.query;
+  const query_raw = req.query;
 
-  // Inline query validation fallback
   const since = query_raw.since as string | undefined;
   const provider = query_raw.provider as string | undefined;
   const chatId = query_raw.chatId as string | undefined;

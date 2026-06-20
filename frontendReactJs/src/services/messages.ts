@@ -1,6 +1,7 @@
 import { apiFetch, apiJson } from "../lib/api";
 import { encryptFileForRecipient, encryptForRecipient } from "../lib/crypto";
 import type { EcdhPrivateJwk } from "../lib/crypto";
+import { EcdhPrivateJwkSchema } from "../schemas";
 
 type UploadOpts = {
   resourceType?: "image" | "raw" | "auto";
@@ -21,8 +22,11 @@ const uploadSelectedImage = async (
   if (opts?.resourceType) form.append("resourceType", opts.resourceType);
   if (opts?.encrypted) form.append("encrypted", "1");
 
-  const options: any = { method: "POST", body: form };
-  if (token) options.headers = { Authorization: `Bearer ${token}` };
+  const options: RequestInit = {
+    method: "POST",
+    body: form,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
 
   const resp = await apiFetch("/uploads/formidable", options, token);
   const json = await resp.json();
@@ -64,13 +68,13 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
   const outboundMode = replyMode === "secure";
 
   // Ensure local private key present when secure
-  let localPriv: any = privJwk ?? null;
+  let localPriv: EcdhPrivateJwk | null = privJwk ?? null;
   if (outboundMode && !localPriv && localOwnerId) {
     const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
     if (stored) {
-      try {
-        localPriv = JSON.parse(stored);
-      } catch { /* corrupted localStorage key — treat as missing */ }
+      const raw = (() => { try { return JSON.parse(stored); } catch { /* non-fatal: corrupted localStorage key */ return null; } })();
+      const parsed = EcdhPrivateJwkSchema.safeParse(raw);
+      if (parsed.success) localPriv = parsed.data;
     }
   }
 
@@ -124,7 +128,16 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     }
   }
 
-  const payload: any = {
+  const payload: {
+    provider: string;
+    from: string;
+    to: string;
+    chatId: string;
+    attachments: Array<{ type: string; url: string }>;
+    encryptedText?: string;
+    encrypt?: boolean;
+    text?: string;
+  } = {
     provider,
     from: `${provider}-web`,
     to: conversationTarget,

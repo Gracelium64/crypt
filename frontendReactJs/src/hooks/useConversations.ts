@@ -4,7 +4,7 @@ import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
 import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
-import { ChatMessageSchema, ConversationSummarySchema } from "../schemas";
+import { ChatMessageSchema, ConversationSummarySchema, EcdhPrivateJwkSchema } from "../schemas";
 
 export default function useConversations(token?: string | null) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -61,13 +61,11 @@ export default function useConversations(token?: string | null) {
         const incoming = parseResult.data;
 
         // Attempt best-effort decryption per message when a private key is available
-        const priv =
-          privJwk ??
-          (localOwnerId
-            ? JSON.parse(
-                localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-              )
-            : null);
+        const storedRaw = localOwnerId
+          ? (() => { try { return JSON.parse(localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null"); } catch { /* non-fatal: corrupted localStorage key */ return null; } })()
+          : null;
+        const storedJwk = storedRaw ? EcdhPrivateJwkSchema.safeParse(storedRaw) : null;
+        const priv: EcdhPrivateJwk | null = privJwk ?? (storedJwk?.success ? storedJwk.data : null);
 
         if (priv) {
           for (const item of incoming) {
@@ -110,13 +108,11 @@ export default function useConversations(token?: string | null) {
       try {
         const ct = message.encryptedText ?? "";
         if (isSecureCiphertext(ct)) {
-          const priv =
-            privJwk ??
-            (localOwnerId
-              ? JSON.parse(
-                  localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-                )
-              : null);
+          const incomingRaw = localOwnerId
+            ? (() => { try { return JSON.parse(localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null"); } catch { /* non-fatal: corrupted localStorage key */ return null; } })()
+            : null;
+          const incomingJwk = incomingRaw ? EcdhPrivateJwkSchema.safeParse(incomingRaw) : null;
+          const priv: EcdhPrivateJwk | null = privJwk ?? (incomingJwk?.success ? incomingJwk.data : null);
           if (priv) {
             const ownerId =
               message.direction === "inbound" ? message.from : message.to;

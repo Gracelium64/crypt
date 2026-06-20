@@ -198,8 +198,9 @@ export async function verifyPhoneCode(
     await client.invoke(
       new Api.auth.SignIn({ phoneNumber, phoneCodeHash, phoneCode }),
     );
-  } catch (err: any) {
-    const msg: string = err?.errorMessage ?? err?.message ?? "";
+  } catch (err: unknown) {
+    const e = err as { errorMessage?: string; message?: string };
+    const msg: string = e?.errorMessage ?? e?.message ?? "";
     if (msg.includes("SESSION_PASSWORD_NEEDED")) {
       if (!password) throw new Error("Two-factor authentication required — provide your Telegram password");
       const { computeCheck } = await import("telegram/Password.js");

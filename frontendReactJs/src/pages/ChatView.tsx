@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import Timeline from "@/components/Timeline";
 import { deriveAesGcmKey } from "@/lib/crypto";
+import type { EcdhPrivateJwk } from "@/lib/crypto";
 import type { ChatMessage, ConversationSummary, Provider } from "@/types";
 
 const providerMeta: Record<Provider, { label: string }> = {
@@ -14,7 +15,7 @@ type Props = {
   selectedChatId: string;
   messages: ChatMessage[];
   isRealtime: boolean;
-  privJwk: unknown;
+  privJwk: EcdhPrivateJwk | null;
   localOwnerId: string;
   text: string;
   setText: (t: string) => void;

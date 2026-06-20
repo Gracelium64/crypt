@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { apiBase } from "../lib/constants";
+import type { ChatMessage } from "../types";
 
-export default function useRealtime(accountId: string | null, onNewMessage: ((m: any) => void) | null) {
+export default function useRealtime(accountId: string | null, onNewMessage: ((m: ChatMessage) => void) | null) {
   const [isRealtime, setIsRealtime] = useState(false);
   const callbackRef = useRef(onNewMessage);
   const accountIdRef = useRef(accountId);
@@ -25,7 +26,7 @@ export default function useRealtime(accountId: string | null, onNewMessage: ((m:
     };
     const onDisconnect = () => setIsRealtime(false);
     // Stable handler — always delegates to the latest callback
-    const onMessage = (m: any) => callbackRef.current?.(m);
+    const onMessage = (m: ChatMessage) => callbackRef.current?.(m);
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);

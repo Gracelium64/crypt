@@ -1,9 +1,8 @@
 import { useState } from "react";
-
-type Conn = any;
+import type { Connection } from "../types";
 
 type Props = {
-  connections: Conn[];
+  connections: Connection[];
   connectionsBusy: boolean;
   loadConnectionsList: () => Promise<void>;
   deleteConnection: (id: string) => Promise<void>;

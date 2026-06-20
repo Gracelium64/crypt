@@ -111,9 +111,9 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
     try {
       await apiJson("/telegram/direct/request-qr", { method: "POST" }, token);
       startQrPoll();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setQrStep("error");
-      setQrError(err?.message ?? "Failed to start QR login");
+      setQrError(err instanceof Error ? err.message : "Failed to start QR login");
     } finally {
       setBusy(false);
     }
@@ -131,8 +131,8 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       setQrStep("scanning");
       setQr2faPassword("");
       startQrPoll();
-    } catch (err: any) {
-      setQrError(err?.message ?? "2FA failed");
+    } catch (err: unknown) {
+      setQrError(err instanceof Error ? err.message : "2FA failed");
     } finally {
       setBusy(false);
     }
@@ -151,8 +151,8 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
         body: JSON.stringify({ phoneNumber: phone.trim() }),
       }, token);
       setStep("code");
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to send code");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send code");
     } finally {
       setBusy(false);
     }
@@ -173,8 +173,8 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       setPassword("");
       await loadStatus();
       onConnected?.();
-    } catch (err: any) {
-      const msg: string = err?.message ?? "";
+    } catch (err: unknown) {
+      const msg: string = err instanceof Error ? err.message : "";
       if (msg.toLowerCase().includes("two-factor") || msg.toLowerCase().includes("password")) {
         setStep("2fa");
         setError("2FA required — enter your Telegram cloud password");

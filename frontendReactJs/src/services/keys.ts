@@ -1,6 +1,8 @@
 import QRCode from "qrcode";
 import { apiJson, apiFetch } from "../lib/api";
 import { arrayBufferToBase64, fingerprintFromPubKey } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
+import { EcdhPrivateJwkSchema } from "../schemas";
 
 export const generateKeypair = async (localOwnerId: string) => {
   if (!localOwnerId) throw new Error("Enter local ID first");
@@ -98,7 +100,7 @@ export const registerPublicKey = async (
 export const fetchAndDecryptPrivateKey = async (
   authToken?: string | null,
   password?: string | null,
-): Promise<unknown | null> => {
+): Promise<EcdhPrivateJwk | null> => {
   if (!password) return null;
   try {
     const resp = await apiFetch("/keys/me/private", {}, authToken);
@@ -106,7 +108,13 @@ export const fetchAndDecryptPrivateKey = async (
     const json = await resp.json();
     const blob: string | null = json?.data?.privateKeyJwk ?? null;
     if (!blob) return null;
-    return await decryptPrivateKey(password, blob);
+    const raw = await decryptPrivateKey(password, blob);
+    const parsed = EcdhPrivateJwkSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.error("[Keys] decrypted private key failed schema validation:", parsed.error);
+      return null;
+    }
+    return parsed.data;
   } catch (err) {
     console.error("[Keys] fetchAndDecryptPrivateKey failed:", err);
     return null;
