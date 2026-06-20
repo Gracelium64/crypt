@@ -8,8 +8,7 @@ export const validateQuery = <T>(schema: ZodSchema<T>): RequestHandler => {
       res.status(400).json({ ok: false, error: result.error.flatten() });
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    req.query = result.data as any;
+    Object.defineProperty(req, "query", { value: result.data, writable: true, configurable: true });
     next();
   };
 };

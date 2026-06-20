@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import "./styles/global.css";
-import "./styles/components/app-dialogs.css";
+import "./styles/app-dialogs.css";
 import { useAuth } from "@/context";
 import { apiFetch } from "@/lib/api";
 import { isSecureCiphertext, decryptFromSender } from "@/lib/crypto";
@@ -48,7 +48,7 @@ function AppContent() {
   const { handleIncomingMessage } = convHook;
   const { sendMessage: sendMessageHook, busy: sendBusy } = useSend(auth.token, convHook);
   const connectionsHook = useConnections(auth.token);
-  const { providerStatuses, loadProviderStatuses } = useProviders();
+  const { providerStatuses, loadProviderStatuses } = useProviders(auth.token);
 
   const providerRef = useRef(provider);
   const selectedChatIdRef = useRef(selectedChatId);
@@ -137,7 +137,7 @@ function AppContent() {
     [convHook.loadMessages, privJwk, localOwnerId],
   );
 
-  useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses]);
+  useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses, auth.token]);
   useEffect(() => { void connectionsHook.loadConnectionsList(); }, [auth.token]);
 
   // Auto-derive owner id and silently set up E2E keypair when signed in
