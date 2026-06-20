@@ -1,4 +1,4 @@
-# Telegram Phone Code Non-Delivery — Investigation & Resolution 
+# Telegram Phone Code Non-Delivery — Investigation & Resolution
 
 **Branch:** `dev/grace-refactor-debug`
 **Date opened:** 2026-06-20
