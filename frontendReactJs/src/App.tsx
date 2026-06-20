@@ -488,7 +488,7 @@ function AppContent() {
               <ChatsPage
                 conversations={convHook.conversations}
                 conversationsLoading={conversationsLoading}
-                hasConnections={connectionsHook.connections.length > 0}
+                hasConnections={connectionsHook.connections.some((c) => c.provider === provider)}
                 connectionsLoading={connectionsHook.connectionsBusy}
                 selectedChatId={selectedChatId}
                 onOpenConversation={openConversation}
