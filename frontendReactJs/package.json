@@ -18,7 +18,8 @@
     "zod": "4.4.3"
   },
   "overrides": {
-    "esbuild": "0.28.0"
+    "esbuild": "0.28.0",
+    "@aashutoshrathi/word-wrap": "npm:word-wrap@1.2.5"
   },
   "optionalDependencies": {
     "@rolldown/binding-linux-x64-gnu": "1.0.0",
