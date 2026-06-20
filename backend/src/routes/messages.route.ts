@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, validateBody } from "#middleware";
+import { authenticate, validateBody, validateQuery } from "#middleware";
 import {
   getMessages,
   getConversations,
@@ -7,12 +7,18 @@ import {
   deleteConversation,
   deleteAllMessages,
 } from "#controllers";
-import { sendMessageSchema } from "#schemas";
+import {
+  sendMessageSchema,
+  messagesQuerySchema,
+  conversationsQuerySchema,
+  deleteConversationQuerySchema,
+  deleteAllMessagesQuerySchema,
+} from "#schemas";
 
 export const messagesRouter = Router();
 
-messagesRouter.get("/messages", authenticate, getMessages);
-messagesRouter.get("/conversations", authenticate, getConversations);
+messagesRouter.get("/messages", authenticate, validateQuery(messagesQuerySchema), getMessages);
+messagesRouter.get("/conversations", authenticate, validateQuery(conversationsQuerySchema), getConversations);
 messagesRouter.post("/messages/send", authenticate, validateBody(sendMessageSchema), sendMessage);
-messagesRouter.delete("/messages/conversation", authenticate, deleteConversation);
-messagesRouter.delete("/messages/all", authenticate, deleteAllMessages);
+messagesRouter.delete("/messages/conversation", authenticate, validateQuery(deleteConversationQuerySchema), deleteConversation);
+messagesRouter.delete("/messages/all", authenticate, validateQuery(deleteAllMessagesQuerySchema), deleteAllMessages);

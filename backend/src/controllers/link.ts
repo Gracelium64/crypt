@@ -50,10 +50,6 @@ export const initLink: RequestHandler = async (req, res, next) => {
 export const getLinkStatus: RequestHandler = async (req, res, next) => {
   const code = String(req.params.code || "");
   const accountId = req.account!.accountId;
-  if (!code) {
-    next(new Error("Missing link code", { cause: { status: 400 } }));
-    return;
-  }
 
   try {
     const record = await Link.findOne({ code }).lean();

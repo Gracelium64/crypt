@@ -6,10 +6,16 @@ Meaning, conclusions, and plans to expand on this:
 
 - The project was planned and orchestrated by Grace
 - Execution was done mostly with AI Coding Agent
-- Main take from this process is that although speed for producing a working prototype was highly improved, intensive code review is still pending completion for after the project's deadline
+- Main take from this process is that although speed for producing a working prototype was highly improved, some of the intensive code review is still pending completion for after the project's deadline (the review is ongoing and issues are being noted)
 - Some of the fun and creativity of coding is lost in the process of AI Assisted Development
 - In addition to the code review, understanding of project elements that were not taught during the bootcamp is underway
 - As a teaching exercise this project will be rebuilt to a React Native app in a process of self learning to bridge the knowledge gap from ReactJS to React Native
+- All the prompt engineering in the world can't stop an AI agent from completely ignoring instructions occasionally, everything needs to be verified several times over
+- Copilot vs. Claude: Copilot “instinctively” avoids exposing secrets, while Claude needs extremely specific rules that specify all the ways it could expose secrets and to forbid it from doing that
+- Coding gaps: Copilot leaves a lot more gaps and drifts away from references of practices and file structure
+- Both lie and assume even when instructed to never assume and ask for clarifications and/or admit knowledge gaps when implementing a feature
+- Claude seems to be better in meta-prompting
+- Both Copilot and Claude tend to report completion of tasks out of memory's itent to do so rather than verifying what was actually done - even when prompted not to do that
 
 #
 

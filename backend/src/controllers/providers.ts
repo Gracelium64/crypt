@@ -189,7 +189,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
   if (msg.from?.id) {
     const senderId = String(msg.from.id);
     const senderName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" ").trim() || null;
-    const senderUsername: string | null = (msg.from as any).username ?? null;
+    const senderUsername: string | null = msg.from.username ?? null;
     ProviderConnection.findOneAndUpdate(
       { provider: "telegram", providerChatId: senderId, accountId: null },
       { $setOnInsert: { provider: "telegram", providerChatId: senderId, accountId: null, active: false },
