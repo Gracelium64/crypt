@@ -24,7 +24,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const profile = await meRequest(t);
         setUser(profile);
         setToken(t);
-      } catch {
+      } catch (err) {
+        console.error("[Auth] session check failed:", err);
         localStorage.removeItem("crypt:token");
         setUser(null);
         setToken(null);

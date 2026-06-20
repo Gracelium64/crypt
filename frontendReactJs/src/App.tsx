@@ -9,7 +9,8 @@ import { nukeAccountRequest } from "@/data";
 import { ProtectedLayout } from "@/layouts";
 import { ChatsPage, FindPage, SettingsPage, ChatView } from "@/pages";
 import { OnboardingModal } from "@/components";
-import type { Provider, ChatMessage } from "@/types";
+import type { Provider, ChatMessage, EcdhPrivateJwk } from "@/types";
+import { EcdhPrivateJwkSchema } from "@/schemas";
 
 const providerMeta: Record<Provider, { label: string; icon: string; accent: string }> = {
   telegram: { label: "Telegram", icon: "✈️", accent: "#2CA5E0" },
@@ -27,7 +28,7 @@ function AppContent() {
   const [replyMode, setReplyMode] = useState<"secure" | "plain">("secure");
   const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
-  const [privJwk, setPrivJwk] = useState<unknown>(null);
+  const [privJwk, setPrivJwk] = useState<EcdhPrivateJwk | null>(null);
   const keySetupInProgress = useRef(false);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
@@ -172,7 +173,8 @@ function AppContent() {
           setFingerprint(fp);
         } catch { /* non-fatal */ }
         return true;
-      } catch {
+      } catch (err) {
+        console.error("[App] key import/registration failed:", err);
         return false;
       }
     };

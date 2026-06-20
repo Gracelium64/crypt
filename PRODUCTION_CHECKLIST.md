@@ -143,7 +143,7 @@ npm run backup-keys          # creates timestamped JSON backup in scripts/
 npm run migrate:key-owner-ids # rewrites Key.ownerId from email → accountId
 ```
 
-After migration, `Key.ownerId` values are accountIds. JWT tokens issued before the migration will be rejected on the new backend — all users must re-login after the deploy.
+After migration, `Key.ownerId` values are accountIds. Existing JWT tokens remain valid after deploy — the new authenticate middleware ignores the now-unused email field in old tokens. Users do not need to re-login.
 
 Skip this section entirely for fresh installs.
 

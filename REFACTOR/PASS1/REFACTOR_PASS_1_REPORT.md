@@ -31,7 +31,7 @@ Pass 1 addressed 16 refactor items (Phase C), 3 doc additions (Phase A), and 12 
 | C3 | Added `authenticate` middleware to `GET /keys/:ownerId` |
 | C4 | Removed email from JWT payload across all 4 phases: types (`custom.d.ts`, `authenticate.ts`), controllers (`auth.ts`, `keys.ts`, `nukeAccount`), frontend (`App.tsx`), and 3 migration scripts with `npm run` hooks |
 | C5 | Added `console.error` to 2 previously silent catch blocks (`link.ts:28`, `providers.ts:322`); all other empty catches verified intentional |
-| C6 | `getLinkStatus` now verifies `link.accountId === req.account.accountId`; fixed email→accountId key lookups in `providerConnections.ts` + `link.ts`; removed stale `Account` imports from both |
+| C6 | `getLinkStatus` now verifies `link.claimedAccountId === req.account.accountId`; fixed email→accountId key lookups in `providerConnections.ts` + `link.ts`; removed stale `Account` imports from both |
 | C7 | `providers.service.ts:127` — WhatsApp delivery now uses the `token` parameter, not `env.WHATSAPP_ACCESS_TOKEN` |
 | C8 | Added `file-type@22.0.1` MIME byte-sniffing to `uploadBase64` and `uploadFormidable`; skipped for raw/encrypted attachments |
 | C9 | Socket.IO upgraded to per-account rooms: server emits to `io.to(accountId)`; client sends `join:account` on connect; `App.tsx` polling updated to pass `accountId` |

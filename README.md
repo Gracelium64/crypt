@@ -1,5 +1,17 @@
 # Crypt Companion
 
+## This project was conducted as a AI Assisted Development project for a WBS bootcamp.
+
+Meaning:
+
+- The project was planned and orchestrated by Grace
+- Execution was done mostly with AI Coding Agent
+- Main take from this process is that although speed for producing a working prototype was highly improved, intensive code review is still pending completion for after the project's deadline
+- In addition to the code review, understanding of project elements that were not taught during the bootcamp is underway
+- As a teaching exercise this project will be rebuilt to a React Native app in a process of self learning to bridge the knowledge gap from ReactJS to React Native
+
+#
+
 MVP demo stack:
 
 - Backend: Node.js + TypeScript + Express + MongoDB + Socket.IO

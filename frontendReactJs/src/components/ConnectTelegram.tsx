@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { apiFetch, apiJson } from "../lib/api";
 import useLink from "@/hooks/useLink";
+import { QrStatusSchema } from "@/schemas";
 
 interface TelegramStatus {
   active: boolean;
@@ -74,7 +75,9 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
         const resp = await apiFetch("/telegram/direct/qr-status", {}, token);
         if (!resp.ok) return;
         const j = await resp.json();
-        const data = j.data as { token: string; step: string; error?: string };
+        const qrParsed = QrStatusSchema.safeParse(j.data);
+        if (!qrParsed.success) { console.error("[Telegram] QR status shape mismatch:", qrParsed.error); return; }
+        const data = qrParsed.data;
 
         if (data.token) {
           const url = await QRCode.toDataURL(data.token, { width: 220, margin: 2 });

@@ -172,6 +172,14 @@ Authentication (JWT verification via `authenticate`) confirms identity but does 
 
 Add explicit authorization as part of the pre-production security pass.
 
+### GET /provider/resolve — intentional open lookup (documented decision)
+
+Returns `accountId` (MongoDB ObjectId, not PII) for a given `providerChatId`. Accessible to any authenticated Crypt user — required for cross-account message fan-out routing. Restricting this endpoint to the requesting user's own records would break inbound message delivery to other recipients.
+
+Accepted risk: any authenticated user can confirm whether a Telegram/WhatsApp ID belongs to a Crypt account. This is acceptable for a private/closed deployment. `accountId` is an opaque identifier — it carries no user-readable PII.
+
+This decision was reviewed and documented during Pass 1 Correction (2026-06-20). Revisit if the deployment ever becomes multi-tenant or public.
+
 ---
 
 ### Production-readiness standard — applies to all future audits

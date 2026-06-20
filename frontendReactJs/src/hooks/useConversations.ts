@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
+import { z } from "zod";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
 import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
+import { ChatMessageSchema, ConversationSummarySchema } from "../schemas";
 
 export default function useConversations(token?: string | null) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -18,7 +20,9 @@ export default function useConversations(token?: string | null) {
       );
       if (!resp.ok) throw new Error("Could not load conversations");
       const payload = await resp.json();
-      setConversations((payload.data ?? []) as ConversationSummary[]);
+      const parsed = z.array(ConversationSummarySchema).safeParse(payload.data ?? []);
+      if (parsed.success) setConversations(parsed.data);
+      else console.error("[Conversations] response shape mismatch:", parsed.error);
     } catch (_err) {
       console.error("loadConversations error", _err);
     }
@@ -49,7 +53,12 @@ export default function useConversations(token?: string | null) {
         const resp = await apiFetch(`/messages?${params.toString()}`, {}, token);
         if (!resp.ok) throw new Error("Could not load messages");
         const payload = await resp.json();
-        const incoming = (payload.data ?? []) as ChatMessage[];
+        const parseResult = z.array(ChatMessageSchema).safeParse(payload.data ?? []);
+        if (!parseResult.success) {
+          console.error("[Messages] response shape mismatch:", parseResult.error);
+          return;
+        }
+        const incoming = parseResult.data;
 
         // Attempt best-effort decryption per message when a private key is available
         const priv =
@@ -79,9 +88,7 @@ export default function useConversations(token?: string | null) {
 
               const plain = await decryptFromSender(ct, priv, theirPub);
               if (plain) item.decryptedText = plain;
-            } catch {
-              /* ignore per-message decrypt failures */
-            }
+            } catch { /* ignore per-message decrypt failures — message still rendered encrypted */ }
           }
         }
 
@@ -128,9 +135,7 @@ export default function useConversations(token?: string | null) {
             }
           }
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore per-realtime-message decrypt failure — message still rendered encrypted */ }
 
       setMessages((current) => [...current, message]);
       setLastSync(message.createdAt);

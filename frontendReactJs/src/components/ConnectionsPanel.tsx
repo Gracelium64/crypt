@@ -23,7 +23,8 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
     setConfirmUnlinkId(null);
     try {
       await deleteConnection(id);
-    } catch {
+    } catch (err) {
+      console.error("[ConnectionsPanel] deleteConnection failed:", err);
       setUnlinkError("Failed to unlink — please try again");
     }
   };

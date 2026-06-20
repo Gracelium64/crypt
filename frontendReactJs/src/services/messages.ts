@@ -70,9 +70,7 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     if (stored) {
       try {
         localPriv = JSON.parse(stored);
-      } catch {
-        // ignore
-      }
+      } catch { /* corrupted localStorage key — treat as missing */ }
     }
   }
 
@@ -104,8 +102,8 @@ export const sendMessageService = async (opts: SendMessageOptions) => {
     } else {
       try {
         finalImageUrl = await uploadSelectedImage(file, undefined, authToken);
-      } catch {
-        // fallback to base64 proxy
+      } catch (uploadErr) {
+        console.error("[Messages] formidable upload failed, falling back to base64:", uploadErr);
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);

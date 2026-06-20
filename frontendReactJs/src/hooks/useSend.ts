@@ -56,9 +56,7 @@ export default function useSend(authToken: string | null, convHook: ConvRefreshe
             opts.localOwnerId,
           );
         }
-      } catch {
-        // non-fatal refresh errors
-      }
+      } catch { /* non-fatal — conversation list refresh after send; message was already delivered */ }
 
       return true;
     } catch (_err) {

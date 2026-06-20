@@ -52,12 +52,13 @@ export default function FindContact({
         try {
           const ab = base64ToArrayBuffer(d.publicKey);
           fingerprint = await fingerprintFromPubKey(ab);
-        } catch {
-          // ignore fingerprint failure
+        } catch (err) {
+          console.error("[FindContact] fingerprint failed:", err);
         }
       }
       setResult({ ...d, fingerprint });
-    } catch {
+    } catch (err) {
+      console.error("[FindContact] search failed:", err);
       setError("Search failed — check your connection");
     } finally {
       setBusy(false);

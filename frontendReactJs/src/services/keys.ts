@@ -107,7 +107,8 @@ export const fetchAndDecryptPrivateKey = async (
     const blob: string | null = json?.data?.privateKeyJwk ?? null;
     if (!blob) return null;
     return await decryptPrivateKey(password, blob);
-  } catch {
+  } catch (err) {
+    console.error("[Keys] fetchAndDecryptPrivateKey failed:", err);
     return null;
   }
 };

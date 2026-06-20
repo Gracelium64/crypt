@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiJson } from "../lib/api";
+import type { LinkStatusData } from "../types";
+import { LinkStatusDataSchema } from "../schemas";
 
 const SESSION_KEY = "crypt:pendingLink";
 
@@ -19,17 +21,13 @@ const isMobileDevice = () =>
 const savePending = (d: SavedLink) => {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(d));
-  } catch {
-    // ignore
-  }
+  } catch { /* sessionStorage blocked (private mode / cross-origin) */ }
 };
 
 const clearPending = () => {
   try {
     sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    // ignore
-  }
+  } catch { /* sessionStorage blocked (private mode / cross-origin) */ }
 };
 
 const loadPending = (): SavedLink | null => {
@@ -42,19 +40,18 @@ const loadPending = (): SavedLink | null => {
       return null;
     }
     return d;
-  } catch {
-    return null;
-  }
+  } catch { /* corrupted sessionStorage — treat as no pending link */ }
+  return null;
 };
 
 export default function useLink(
   authToken?: string | null,
-  onComplete?: (data: any) => void,
+  onComplete?: (data: LinkStatusData) => void,
 ) {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linkProvider, setLinkProvider] = useState<string | null>(null);
   const [linkExpiresAt, setLinkExpiresAt] = useState<string | null>(null);
-  const [linkStatus, setLinkStatus] = useState<any | null>(null);
+  const [linkStatus, setLinkStatus] = useState<LinkStatusData | null>(null);
   const [linkDeepMobile, setLinkDeepMobile] = useState<string | null>(null);
   const [linkDeepWeb, setLinkDeepWeb] = useState<string | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
@@ -102,9 +99,7 @@ export default function useLink(
 
       try {
         navigator.clipboard?.writeText(`LINK ${code}`);
-      } catch {
-        // ignore
-      }
+      } catch { /* clipboard API blocked — non-fatal */ }
 
       // Auto-open the provider:
       // - Mobile: navigate the SAME tab to tg:// so the browser stays alive
@@ -118,9 +113,7 @@ export default function useLink(
         } else {
           if (deepLinkWeb) window.open(deepLinkWeb, "_blank");
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* deep link navigation failed — non-fatal */ }
 
       return j;
     } finally {
@@ -155,17 +148,17 @@ export default function useLink(
         if (!resp.ok || cancelled) return;
         const j = await resp.json();
         if (cancelled) return;
-        setLinkStatus(j.data ?? null);
-        if (j.data?.completed) {
+        const parsed = LinkStatusDataSchema.nullable().safeParse(j.data ?? null);
+        if (!parsed.success) { console.error("[Link] status response shape mismatch:", parsed.error); return; }
+        setLinkStatus(parsed.data);
+        if (parsed.data?.completed) {
           clearPending();
           window.clearInterval(intervalId);
           cancelled = true;
           setLinkCode(null);
-          if (onCompleteRef.current) onCompleteRef.current(j.data);
+          if (onCompleteRef.current && parsed.data) onCompleteRef.current(parsed.data);
         }
-      } catch {
-        // ignore polling errors
-      }
+      } catch { /* ignore polling errors — transient network; poll retries automatically */ }
     };
 
     intervalId = window.setInterval(poll, 2000);
