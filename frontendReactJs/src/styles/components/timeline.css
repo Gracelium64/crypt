@@ -1,0 +1,135 @@
+/* ── Timeline / message bubbles ── */
+.timeline {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.message-row.inbound  { justify-content: flex-start; }
+.message-row.outbound { justify-content: flex-end; }
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--inbound);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.avatar.you { background: var(--outbound); }
+
+.bubble {
+  max-width: 75%;
+  padding: 9px 13px;
+  border-radius: 16px;
+  line-height: 1.4;
+  font-size: 15px;
+  word-break: break-word;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.bubble.inbound {
+  background: var(--inbound);
+  border-top-left-radius: 4px;
+  color: var(--text);
+}
+.bubble.outbound {
+  background: var(--outbound);
+  border-top-right-radius: 4px;
+  color: var(--text);
+}
+.bubble-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bubble-content { color: var(--text); white-space: pre-wrap; }
+.bubble-foot {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  display: flex;
+  gap: 8px;
+}
+.secure-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--green);
+  background: var(--green-dim);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.attachment-grid { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.attachment-grid img {
+  width: 140px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ── Encrypted attachment ── */
+.encrypted-attachment {
+  margin-top: 6px;
+}
+.encrypted-attachment button {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+/* ── Timeline compat (used by Timeline.tsx) ── */
+.message-card {
+  display: block;
+  margin-bottom: 2px;
+}
+.message-foot {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 2px 8px 6px;
+  display: flex;
+  gap: 10px;
+  opacity: 0.7;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.timeline-empty p { line-height: 1.5; }
+
+/* ── Timeline inline style extractions ── */
+.message-security {
+  margin-left: 12px;
+}
+
+.attach-error {
+  color: var(--red, #e53e3e);
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+}

@@ -1,25 +1,5 @@
 import { env } from "../config/env.js";
-import type { ProviderName } from "#models";
-
-type SendPayload = {
-  provider: ProviderName;
-  chatId: string;
-  to: string;
-  text: string;
-  attachments: Array<{ type: "image"; url: string }>;
-};
-
-type SendResult = {
-  providerMessageId?: string;
-  deliveryStatus: "sent" | "failed";
-  providerResponse?: unknown;
-  error?: string;
-};
-
-type SendOpts = {
-  tokenOverride?: string;
-  phoneNumberIdOverride?: string;
-};
+import type { SendPayload, SendResult, SendOpts } from "../types/providers.js";
 
 const sendTelegram = async (
   payload: SendPayload,
@@ -124,7 +104,7 @@ const sendWhatsApp = async (
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

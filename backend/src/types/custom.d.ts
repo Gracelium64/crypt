@@ -3,7 +3,6 @@ declare global {
     interface Request {
       account?: {
         accountId: string;
-        email: string;
         iat?: number;
         exp?: number;
       };

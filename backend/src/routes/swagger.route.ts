@@ -1,11 +1,15 @@
 import { Router } from "express";
+import type { RequestHandler } from "express";
 import fs from "fs";
 import path from "path";
+import { authenticate } from "#middleware";
 
 const router = Router();
 
+const prodGuard: RequestHandler[] = process.env.NODE_ENV === "production" ? [authenticate] : [];
+
 // Serve raw OpenAPI JSON
-router.get("/openapi.json", (_req, res) => {
+router.get("/openapi.json", ...prodGuard, (_req, res) => {
   try {
     const specPath = path.resolve(process.cwd(), "backend/openapi.json");
     const raw = fs.readFileSync(specPath, "utf8");
@@ -17,7 +21,7 @@ router.get("/openapi.json", (_req, res) => {
 });
 
 // Simple HTML page that loads Swagger UI from CDN and points to /api/openapi.json
-router.get("/docs", (_req, res) => {
+router.get("/docs", ...prodGuard, (_req, res) => {
   const html = `<!doctype html>
   <html lang="en">
   <head>

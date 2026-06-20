@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import "./App.css";
+import "./styles/global.css";
+import "./styles/app-dialogs.css";
 import { useAuth } from "@/context";
 import { apiFetch } from "@/lib/api";
 import { isSecureCiphertext, decryptFromSender } from "@/lib/crypto";
@@ -9,7 +10,8 @@ import { nukeAccountRequest } from "@/data";
 import { ProtectedLayout } from "@/layouts";
 import { ChatsPage, FindPage, SettingsPage, ChatView } from "@/pages";
 import { OnboardingModal } from "@/components";
-import type { Provider, ChatMessage } from "@/types";
+import type { Provider, ChatMessage, EcdhPrivateJwk } from "@/types";
+import { EcdhPrivateJwkSchema } from "@/schemas";
 
 const providerMeta: Record<Provider, { label: string; icon: string; accent: string }> = {
   telegram: { label: "Telegram", icon: "✈️", accent: "#2CA5E0" },
@@ -27,7 +29,7 @@ function AppContent() {
   const [replyMode, setReplyMode] = useState<"secure" | "plain">("secure");
   const [localOwnerId, setLocalOwnerId] = useState("");
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
-  const [privJwk, setPrivJwk] = useState<unknown>(null);
+  const [privJwk, setPrivJwk] = useState<EcdhPrivateJwk | null>(null);
   const keySetupInProgress = useRef(false);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
@@ -46,13 +48,15 @@ function AppContent() {
   const { handleIncomingMessage } = convHook;
   const { sendMessage: sendMessageHook, busy: sendBusy } = useSend(auth.token, convHook);
   const connectionsHook = useConnections(auth.token);
-  const { providerStatuses, loadProviderStatuses } = useProviders();
+  const { providerStatuses, loadProviderStatuses } = useProviders(auth.token);
 
   const providerRef = useRef(provider);
   const selectedChatIdRef = useRef(selectedChatId);
+  const lastSyncRef = useRef(convHook.lastSync);
 
   useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { selectedChatIdRef.current = selectedChatId; }, [selectedChatId]);
+  useEffect(() => { lastSyncRef.current = convHook.lastSync; }, [convHook.lastSync]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -135,7 +139,7 @@ function AppContent() {
     [convHook.loadMessages, privJwk, localOwnerId],
   );
 
-  useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses]);
+  useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses, auth.token]);
   useEffect(() => { void connectionsHook.loadConnectionsList(); }, [auth.token]);
 
   // Auto-derive owner id and silently set up E2E keypair when signed in
@@ -162,7 +166,7 @@ function AppContent() {
           { name: "ECDH", namedCurve: "P-256" },
           false, ["deriveKey", "deriveBits"],
         );
-        setPrivJwk(jwk);
+        setPrivJwk(jwk as EcdhPrivateJwk);
         setPubKeyB64(pub);
         localStorage.setItem(`crypt:priv:${email}`, JSON.stringify(jwk));
         localStorage.setItem(`crypt:pub:${email}`, pub);
@@ -172,7 +176,8 @@ function AppContent() {
           setFingerprint(fp);
         } catch { /* non-fatal */ }
         return true;
-      } catch {
+      } catch (err) {
+        console.error("[App] key import/registration failed:", err);
         return false;
       }
     };
@@ -186,9 +191,10 @@ function AppContent() {
         const storedPriv = localStorage.getItem(`crypt:priv:${email}`);
         const storedPub = localStorage.getItem(`crypt:pub:${email}`);
         if (storedPriv && storedPub) {
-          let jwk: unknown;
-          try { jwk = JSON.parse(storedPriv); } catch { jwk = null; }
-          if (jwk && await tryLoadJwk(jwk, storedPub)) return;
+          const rawJwk = (() => { try { return JSON.parse(storedPriv); } catch { /* ignore */ return null; } })();
+          const jwkParsed = EcdhPrivateJwkSchema.safeParse(rawJwk);
+          if (jwkParsed.success && await tryLoadJwk(jwkParsed.data, storedPub)) return;
+          else if (!jwkParsed.success && rawJwk) console.error("[App] stored private key failed validation:", jwkParsed.error);
           localStorage.removeItem(`crypt:priv:${email}`);
           localStorage.removeItem(`crypt:pub:${email}`);
         }
@@ -200,7 +206,7 @@ function AppContent() {
         // 2. Try fetching from server, decrypting with login password (new device / cleared storage)
         const serverJwk = await fetchAndDecryptPrivateKey(auth.token, password);
         if (serverJwk) {
-          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(email)}`).catch(() => null);
+          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(auth.user?.id ?? "")}`).catch(() => null);
           if (serverPubResp?.ok) {
             const kj = await serverPubResp.json().catch(() => null);
             const serverPub: string | null = kj?.data?.publicKey ?? null;
@@ -246,7 +252,7 @@ function AppContent() {
           try {
             const ownerId = msg.direction === "inbound" ? msg.from : msg.to;
             if (!ownerId) return msg;
-            const kresp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`);
+            const kresp = await apiFetch(`/keys/${encodeURIComponent(ownerId)}`, {}, auth.token);
             if (!kresp.ok) return msg;
             const kj = await kresp.json();
             const theirPub = kj?.data?.publicKey;
@@ -260,7 +266,7 @@ function AppContent() {
       convHook.setMessages(updated);
     };
     void reDecrypt();
-  }, [privJwk]);
+  }, [privJwk, auth.token]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
@@ -278,7 +284,7 @@ function AppContent() {
     [handleIncomingMessage, privJwk, localOwnerId, loadConversations, convHook.setMessages, auth.user?.id],
   );
 
-  const { isRealtime } = useRealtime(onNewMessage);
+  const { isRealtime } = useRealtime(auth.user?.id ?? null, onNewMessage);
 
   // Catch-up refresh whenever Socket.IO (re)connects — covers messages that
   // arrived while the tab was backgrounded / the connection was dead.
@@ -297,11 +303,11 @@ function AppContent() {
   useEffect(() => {
     const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
-      void loadConversations(provider);
-      void loadMessages(provider, selectedChatId, convHook.lastSync || undefined);
+      void loadConversations(providerRef.current);
+      void loadMessages(providerRef.current, selectedChatIdRef.current, lastSyncRef.current || undefined);
     }, interval);
     return () => window.clearInterval(timer);
-  }, [isRealtime, convHook.lastSync, provider, selectedChatId, loadConversations, loadMessages]);
+  }, [isRealtime, loadConversations, loadMessages]);
 
   const generateAndRegisterKeypair = async () => {
     if (!localOwnerId) { setKeyError("Enter your local ID first"); return; }
@@ -347,7 +353,10 @@ function AppContent() {
       if (replyMode === "secure" && !localPriv && localOwnerId) {
         const stored = localStorage.getItem(`crypt:priv:${localOwnerId}`);
         if (stored) {
-          try { localPriv = JSON.parse(stored); setPrivJwk(localPriv); } catch { /* ignore */ }
+          const rawStored = (() => { try { return JSON.parse(stored); } catch { /* ignore */ return null; } })();
+          const storedParsed = EcdhPrivateJwkSchema.safeParse(rawStored);
+          if (storedParsed.success) { localPriv = storedParsed.data; setPrivJwk(storedParsed.data); }
+          else if (rawStored) console.error("[App] handleSend stored key failed validation:", storedParsed.error);
         }
       }
 
@@ -375,7 +384,7 @@ function AppContent() {
 
       {toastMessage && (
         <div className="toast" role="status">
-          <span style={{ flex: 1 }}>{toastMessage}</span>
+          <span className="toast-text">{toastMessage}</span>
           <button className="toast-close" type="button" onClick={() => setToastMessage(null)} aria-label="Dismiss">✕</button>
         </div>
       )}
@@ -408,8 +417,7 @@ function AppContent() {
             {tab === "chats" && (
               <button
                 type="button"
-                className="btn-ghost"
-                style={{ fontSize: 18, padding: "2px 6px", lineHeight: 1 }}
+                className="btn-ghost nuke-trigger"
                 onClick={() => { setNukeCount(10); setNukeOpen(true); }}
                 aria-label="Nuke account"
                 title="Nuke account"
@@ -420,8 +428,7 @@ function AppContent() {
             {tab === "settings" && (
               <button
                 type="button"
-                className="btn-ghost"
-                style={{ fontSize: 18, padding: "2px 6px", lineHeight: 1 }}
+                className="btn-ghost nuke-trigger"
                 onClick={() => setOnboardingOpen(true)}
                 aria-label="How to use Crypt"
               >
@@ -459,6 +466,7 @@ function AppContent() {
               <FindPage
                 provider={provider}
                 onStartConversation={(chatId, contactProvider) => openConversation(chatId, contactProvider)}
+                token={auth.token}
               />
             )}
             {tab === "settings" && (
@@ -502,54 +510,28 @@ function AppContent() {
           role="dialog"
           aria-modal="true"
           aria-label="Nuke account confirmation"
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.82)",
-            zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
+          className="nuke-backdrop"
         >
-          <div style={{
-            background: "var(--surface, #1a1a1a)",
-            border: "2px solid #e53e3e",
-            borderRadius: 14,
-            padding: "32px 28px",
-            maxWidth: 320,
-            width: "90%",
-            textAlign: "center",
-          }}>
-            <div style={{ fontSize: 52, lineHeight: 1 }}>☢️</div>
-            <h2 style={{ color: "#e53e3e", margin: "14px 0 8px", fontSize: 20 }}>Nuke Account</h2>
-            <p style={{ color: "var(--fg-muted, #888)", fontSize: 13, margin: "0 0 20px" }}>
+          <div className="nuke-dialog">
+            <div className="nuke-icon">☢️</div>
+            <h2 className="nuke-title">Nuke Account</h2>
+            <p className="nuke-description">
               All messages, connections, keys and your account will be permanently deleted.
             </p>
-            <div style={{ fontSize: 13, color: "var(--fg-muted, #aaa)", marginBottom: 4 }}>
+            <div className="nuke-countdown-label">
               Account will be nuked in
             </div>
-            <div style={{ fontSize: 72, fontWeight: 700, color: "#e53e3e", lineHeight: 1, margin: "4px 0" }}>
+            <div className="nuke-count">
               {nukeCount}
             </div>
-            <div style={{ fontSize: 12, color: "var(--fg-muted, #888)", marginBottom: 20 }}>seconds</div>
-            <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 4, height: 4, marginBottom: 24, overflow: "hidden" }}>
-              <div style={{
-                background: "#e53e3e",
-                height: 4,
-                width: `${(nukeCount / 10) * 100}%`,
-                transition: "width 0.95s linear",
-                borderRadius: 4,
-              }} />
+            <div className="nuke-seconds">seconds</div>
+            <div className="nuke-progress-track">
+              <div className="nuke-progress-bar" style={{ width: `${(nukeCount / 10) * 100}%` }} />
             </div>
             <button
               type="button"
               onClick={cancelNuke}
-              style={{
-                width: "100%", padding: "12px",
-                background: "transparent",
-                border: "1px solid var(--fg-muted, #666)",
-                borderRadius: 8,
-                color: "var(--fg, #eee)",
-                fontSize: 15, cursor: "pointer",
-              }}
+              className="nuke-cancel"
             >
               Cancel
             </button>

@@ -1,9 +1,10 @@
 import type { RequestHandler } from "express";
-import { Key, ProviderConnection, Account } from "#models";
+import { Key, ProviderConnection } from "#models";
+import { logEvent } from "#services";
 import type { RegisterKeyBody } from "#schemas";
 
 export const getMyPrivateKey: RequestHandler = async (req, res, next) => {
-  const ownerId = req.account!.email;
+  const ownerId = req.account!.accountId;
   try {
     const record = await Key.findOne({ ownerId }).lean();
     if (!record?.privateKeyJwk) {
@@ -18,7 +19,7 @@ export const getMyPrivateKey: RequestHandler = async (req, res, next) => {
 
 export const registerKey: RequestHandler = async (req, res, next) => {
   const { publicKey, privateKeyJwk } = req.body as RegisterKeyBody;
-  const ownerId = req.account!.email;
+  const ownerId = req.account!.accountId;
   const accountId = req.account!.accountId;
 
   try {
@@ -52,6 +53,7 @@ export const registerKey: RequestHandler = async (req, res, next) => {
       }
     } catch (mirrorErr) {
       console.error("Failed to mirror public key to provider connections:", mirrorErr);
+      void logEvent("error", "key:mirror_failed", { accountId }, mirrorErr);
     }
 
     res.status(200).json({
@@ -80,19 +82,16 @@ export const getKey: RequestHandler = async (req, res, next) => {
       // then mirror so future lookups are fast.
       const conn = await ProviderConnection.findOne({ providerChatId: ownerId }).lean();
       if (conn?.accountId) {
-        const account = await Account.findById(conn.accountId).lean();
-        if (account?.email) {
-          const emailRecord = await Key.findOne({ ownerId: account.email }).lean();
-          if (emailRecord?.publicKey) {
-            try {
-              await Key.findOneAndUpdate(
-                { ownerId },
-                { publicKey: emailRecord.publicKey },
-                { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
-              );
-            } catch { /* mirror best-effort */ }
-            record = emailRecord;
-          }
+        const accountIdRecord = await Key.findOne({ ownerId: conn.accountId.toString() }).lean();
+        if (accountIdRecord?.publicKey) {
+          try {
+            await Key.findOneAndUpdate(
+              { ownerId },
+              { publicKey: accountIdRecord.publicKey },
+              { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+            );
+          } catch { /* mirror best-effort */ }
+          record = accountIdRecord;
         }
       }
     }

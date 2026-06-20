@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider } from "#services";
+import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName, logEvent } from "#services";
 import { env } from "#config";
 import { telegramInboundSchema, whatsappInboundSchema } from "#schemas";
 
@@ -85,7 +85,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
       if (link) {
         const tgUsername = msg.from?.username ?? null;
         const nameFromFields =
-          [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") ||
+          joinPersonName(msg.from?.first_name, msg.from?.last_name) ??
           String(msg.from?.id ?? msg.chat?.id ?? "unknown");
         const tgDisplayName = tgUsername ?? nameFromFields;
 
@@ -110,16 +110,13 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
                 username: tgUsername ?? undefined,
               });
               try {
-                const account = await Account.findById(link.claimedAccountId).lean();
-                if (account?.email) {
-                  const keyRecord = await Key.findOne({ ownerId: account.email }).lean();
-                  if (keyRecord?.publicKey) {
-                    await Key.findOneAndUpdate(
-                      { ownerId: String(msg.chat.id) },
-                      { publicKey: keyRecord.publicKey },
-                      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
-                    );
-                  }
+                const keyRecord = await Key.findOne({ ownerId: link.claimedAccountId.toString() }).lean();
+                if (keyRecord?.publicKey) {
+                  await Key.findOneAndUpdate(
+                    { ownerId: String(msg.chat.id) },
+                    { publicKey: keyRecord.publicKey },
+                    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+                  );
                 }
               } catch (mirrorErr) {
                 console.error("Failed to mirror key on link:", mirrorErr);
@@ -133,6 +130,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
           }
         } catch (err) {
           console.error("Failed to create ProviderConnection:", err);
+          void logEvent("error", "provider:connection_create_failed", { provider: "telegram" }, err);
         }
 
         try {
@@ -188,7 +186,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
   if (msg.from?.id) {
     const senderId = String(msg.from.id);
     const senderName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" ").trim() || null;
-    const senderUsername: string | null = (msg.from as any).username ?? null;
+    const senderUsername: string | null = msg.from.username ?? null;
     ProviderConnection.findOneAndUpdate(
       { provider: "telegram", providerChatId: senderId, accountId: null },
       { $setOnInsert: { provider: "telegram", providerChatId: senderId, accountId: null, active: false },
@@ -295,6 +293,7 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
                 }
               } catch (err) {
                 console.error("Failed to create ProviderConnection:", err);
+                void logEvent("error", "provider:connection_create_failed", { provider: "whatsapp" }, err);
               }
 
               try {
@@ -319,7 +318,8 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
           try {
             const hosted = await downloadAndUploadWhatsappMedia(msg.image.id);
             attachments = [{ type: "image", url: hosted }];
-          } catch {
+          } catch (mediaErr) {
+            console.error("Failed to download/upload WhatsApp media:", mediaErr);
             attachments = [{ type: "image", url: "whatsapp-media-id:" + msg.image.id }];
           }
         }

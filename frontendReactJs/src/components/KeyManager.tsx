@@ -1,15 +1,17 @@
 import { useState } from "react";
+import type { EcdhPrivateJwk } from "../lib/crypto";
+import "../styles/components/key-manager.css";
 
 type Props = {
   localOwnerId: string;
   setLocalOwnerId: (v: string) => void;
   pubKeyB64: string | null;
-  privJwk: any | null;
+  privJwk: EcdhPrivateJwk | null;
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
   generateAndRegisterKeypair: () => Promise<void>;
-  setPrivJwk: (v: any) => void;
+  setPrivJwk: (v: EcdhPrivateJwk | null) => void;
   authUserEmail?: string | null;
 };
 
@@ -53,7 +55,7 @@ export default function KeyManager(props: Props) {
           disabled={!!authUserEmail}
         />
         {authUserEmail && (
-          <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+          <div className="key-auth-hint">
             Using account email as owner ID: {authUserEmail}
           </div>
         )}
@@ -61,9 +63,9 @@ export default function KeyManager(props: Props) {
 
       <div className="key-actions">
         {confirming ? (
-          <div style={{ fontSize: 13, color: "var(--red, #e53e3e)", marginBottom: 8 }}>
+          <div className="key-confirm-warning">
             This will replace your current keypair. Previous messages will become unreadable.
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <div className="key-confirm-actions">
               <button
                 type="button"
                 onClick={() => { setConfirming(false); void generateAndRegisterKeypair(); }}
@@ -84,7 +86,7 @@ export default function KeyManager(props: Props) {
       </div>
 
       {keyError && (
-        <div style={{ fontSize: 13, marginTop: 8, color: "var(--red, #e53e3e)" }}>
+        <div className="key-error">
           {keyError}
         </div>
       )}

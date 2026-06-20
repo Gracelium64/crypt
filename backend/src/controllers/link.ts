@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "crypto";
-import { Link, ProviderConnection, Key, Account } from "#models";
+import { Link, ProviderConnection, Key } from "#models";
+import { logEvent } from "#services";
 import { env } from "#config";
 import type { InitLinkBody, CompleteLinkBody } from "#schemas";
 
@@ -25,7 +26,8 @@ export const initLink: RequestHandler = async (req, res, next) => {
         deepLinkMobile = `tg://resolve?domain=${encodeURIComponent(env.TELEGRAM_BOT_USERNAME)}&start=${encodeURIComponent(record.code)}`;
         deepLinkWeb = `https://t.me/${encodeURIComponent(env.TELEGRAM_BOT_USERNAME)}?start=${encodeURIComponent(record.code)}`;
       }
-    } catch {
+    } catch (deepLinkErr) {
+      console.error("Failed to build deep link:", deepLinkErr);
       deepLinkMobile = null;
       deepLinkWeb = null;
     }
@@ -47,15 +49,17 @@ export const initLink: RequestHandler = async (req, res, next) => {
 
 export const getLinkStatus: RequestHandler = async (req, res, next) => {
   const code = String(req.params.code || "");
-  if (!code) {
-    next(new Error("Missing link code", { cause: { status: 400 } }));
-    return;
-  }
+  const accountId = req.account!.accountId;
 
   try {
     const record = await Link.findOne({ code }).lean();
     if (!record) {
       next(new Error("Link not found", { cause: { status: 404 } }));
+      return;
+    }
+
+    if (record.claimedAccountId && record.claimedAccountId.toString() !== accountId) {
+      next(new Error("Forbidden", { cause: { status: 403 } }));
       return;
     }
 
@@ -94,6 +98,11 @@ export const completeLink: RequestHandler = async (req, res, next) => {
     }
 
     record.completed = true;
+    void logEvent("info", "link:completed", {
+      provider,
+      providerChatId,
+      accountId: record.claimedAccountId?.toString() ?? null,
+    });
     record.providerChatId = providerChatId;
     if (providerDisplayName) record.providerDisplayName = providerDisplayName;
     await record.save();
@@ -120,16 +129,13 @@ export const completeLink: RequestHandler = async (req, res, next) => {
 
     try {
       if (record.claimedAccountId) {
-        const account = await Account.findById(record.claimedAccountId).lean();
-        if (account?.email) {
-          const existingKey = await Key.findOne({ ownerId: account.email }).lean();
-          if (existingKey?.publicKey) {
-            await Key.findOneAndUpdate(
-              { ownerId: providerChatId },
-              { publicKey: existingKey.publicKey },
-              { upsert: true, new: true, setDefaultsOnInsert: true },
-            );
-          }
+        const existingKey = await Key.findOne({ ownerId: record.claimedAccountId.toString() }).lean();
+        if (existingKey?.publicKey) {
+          await Key.findOneAndUpdate(
+            { ownerId: providerChatId },
+            { publicKey: existingKey.publicKey },
+            { upsert: true, new: true, setDefaultsOnInsert: true },
+          );
         }
       }
     } catch (err) {

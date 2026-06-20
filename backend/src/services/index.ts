@@ -1,4 +1,5 @@
 export { initRealtime, broadcastMessage } from "./realtime.service.js";
+export { logEvent } from "./logger.service.js";
 export { sendToProvider } from "./providers.service.js";
 export {
   uploadBufferToCloudinary,
@@ -16,7 +17,9 @@ export {
   verifyPhoneCode,
   sendViaMTProto,
   disconnectMTProtoSession,
+  resetOtherSessions,
   startQrLogin,
   getQrLoginStatus,
   resolveQr2fa,
+  joinPersonName,
 } from "./telegram-mtproto.service.js";

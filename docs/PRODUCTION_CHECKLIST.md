@@ -36,7 +36,7 @@
 
 **Service settings:**
 - Root directory: `backend`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --include=dev && npm run build`
 - Start command: `node dist/server.js`
 - Environment: `Node`
 - Instance type: at least Starter (512 MB RAM — gramjs needs headroom)
@@ -65,7 +65,7 @@
 | `WEBHOOK_ADMIN_TOKEN` | Random string (optional) |
 
 **Health check:**
-- Set health check path to `/api/providers/status` (returns 200 with no auth)
+- Set health check path to `/health` (returns 200 with no auth) — **not** `/api/providers/status`, which now requires JWT (Pass 2 Correction)
 
 ---
 
@@ -73,7 +73,7 @@
 
 **Service settings:**
 - Root directory: `frontendReactJs`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --legacy-peer-deps && npm run build`
 - Publish directory: `frontendReactJs/dist`
 
 **Environment variables:**
@@ -115,8 +115,8 @@
 - [ ] Rotate `JWT_SECRET` from any dev value
 - [ ] Rotate `DEMO_ENCRYPTION_KEY` from the hardcoded dev value (`0123456789abcdef...`)
 - [ ] Rotate `WEBHOOK_ADMIN_TOKEN`
-- [ ] Remove or restrict the Swagger UI (`/api/docs`) in production — it exposes the full API surface
-- [ ] Set `helmet` headers in Express (already included if `helmet` is in dependencies — verify)
+- [x] **Swagger UI gated in production** — `NODE_ENV === "production"` gates `/api/openapi.json` and `/api/docs` behind `authenticate`. Set `NODE_ENV=production` in Render env vars (already listed in Section 4). No extra step needed. (Pass 2 Correction, 2026-06-20)
+- [x] **Helmet HTTP headers installed** — `helmet@8.2.0` wired in `server.ts` as first middleware. CSP disabled (Swagger page uses CDN). All other defaults active. (Pass 2 Correction, 2026-06-20)
 - [ ] Confirm MongoDB Atlas IP allowlist is not wider than necessary
 - [ ] Review CORS_ORIGIN — must not be `*` in production
 
@@ -133,9 +133,30 @@
 
 ---
 
+## Pre-Deploy: Run C4 Key Migration (upgrading an existing deployment only)
+
+If upgrading from a pre-refactor backend (not a fresh install), run this **before** deploying the new backend:
+
+```bash
+cd backend
+npm run backup-keys          # creates timestamped JSON backup in scripts/
+npm run migrate:key-owner-ids # rewrites Key.ownerId from email → accountId
+```
+
+After migration, `Key.ownerId` values are accountIds. Existing JWT tokens remain valid after deploy — the new authenticate middleware ignores the now-unused email field in old tokens. Users do not need to re-login.
+
+Skip this section entirely for fresh installs.
+
+---
+
 ## Render Deploy Order
 
-1. Deploy backend first (needs to be running before frontend can proxy API calls in dev, and before webhook registration)
+> **C9 upgrade note:** If deploying a Refactor Pass 1 backend to an existing deployment,
+> deploy the **frontend first**, then the backend. The new backend emits to per-account
+> Socket.IO rooms (`join:account`); the old frontend (without `join:account`) would miss
+> all realtime events until it's also updated.
+
+1. Deploy backend first (fresh installs only — see C9 note above for upgrades)
 2. Note the backend URL
 3. Set `VITE_API_BASE_URL` and deploy frontend
 4. Note the frontend URL, set it as `CORS_ORIGIN` in backend env → redeploy backend

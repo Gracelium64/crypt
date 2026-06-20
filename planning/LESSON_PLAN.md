@@ -209,7 +209,7 @@ What happens to messages sent to a connected Telegram account while the server i
 
 **Server side: `services/realtime.service.ts` (35 lines)**  
 Two things: attach to HTTP server, broadcast to all connected clients.  
-No rooms. No socket-level auth. All logged-in browser tabs receive all messages — the frontend filters by account.
+**Refactor Pass 1 (C9, 2026-06-20):** per-account Socket.IO rooms added. Clients emit `join:account` on connect; server emits to `io.to(accountId)` instead of `io.emit()`. No socket-level auth token check (rooms are trusted on the client's own declaration). See `CRYPT_SPECS.md` and `docs/SCALABILITY.md` for details and remaining limitations.
 
 **Client side: `hooks/useRealtime.ts` (34 lines)**  
 Flutter analogy: a `StreamSubscription` that you `.cancel()` in `dispose()`.
@@ -243,25 +243,29 @@ Both paths call the Cloudinary SDK with a buffer and return a URL.
 
 ---
 
-## Module 9 — Link/Pairing System (Day 6, ~4h)
+## Module 9 — Provider Link System (Day 6, ~4h)
 
-The most user-facing complex feature: two users pairing to establish an encrypted channel.
+**Correction (2026-06-19):** The original plan described a user-to-user pairing system with dual public keys. That design was not implemented. What shipped is a provider connection link system — a Crypt user generates a code, an external contact sends it to CryptBot/WhatsApp bot, and a `ProviderConnection` is created. See Module 22 for the actual user-to-user E2E key flow.
+
+**What `Link` actually is:**  
+A short-lived token that maps an external provider contact to a Crypt account. Fields: `{ code, provider, providerChatId, providerDisplayName, completed, expiresAt, claimedAccountId }`. No public keys. No two-user pairing.
 
 **Backend:**
 
-- `models/link.ts` — document: `{ creatorId, claimerId, creatorPubKey, claimerPubKey, code, status }`
-- `routes/link.route.ts` — create link (generates short code), claim link (other user redeems it), check status
+- `models/link.ts` — the Link document as above
+- `routes/link.route.ts` — three routes:
+  - `POST /provider/link/init` — authenticated, generates code + deep links
+  - `GET /provider/link/status/:code` — **authenticated** (added C2, 2026-06-20), polls completion
+  - `POST /provider/link/complete` — admin-gated (called by CryptBot webhook, not the user directly)
+- `controllers/link.ts` — `initLink`, `getLinkStatus`, `completeLink`
 
 **Frontend:**
 
-- `hooks/useLink.ts` (199 lines) — treat this as a state machine. States: `idle → generating → pending → claimed → active`. Map each state to a UI screen in `LinkWizard.tsx`.
-- `components/LinkWizard.tsx` (146 lines) — renders different UI per state
-- `components/FindContact.tsx` (137 lines) — alternative path: find by username instead of QR
+- `hooks/useLink.ts` (199 lines) — generates code, saves to sessionStorage, auto-opens provider deep link, polls status every 2s, fires `onComplete` when `completed: true`
+- Used in: `ConnectTelegram.tsx` (CryptBot tab), `ConnectWhatsApp.tsx`
+- `components/FindContact.tsx` (137 lines) — alternative path: find existing contact by username/phone instead of generating a new link code
 
-**The crypto connection:**  
-When a link is claimed, both users' public keys are in the `link` document. The frontend uses these to derive the shared AES key via ECDH (Module 5). From that point, messages between these two users are encrypted with that derived key.
-
-**Key question:** What prevents a third user from claiming a link code that was meant for someone else? (Look at the `status` field and how `claimLink()` transitions it.)
+**Key question:** `POST /provider/link/complete` has `requireAdmin` middleware. Why? Who calls this endpoint, and why can't it be a public route?
 
 ---
 
@@ -1003,6 +1007,7 @@ pendingQr: Map<accountId, PendingQr>  // tracks QR session state per user
 | `startQrLogin(accountId)` | Creates a gramjs client, calls `signInUserWithQrCode` in a background async task, stores current token in `pendingQr`. The `qrCode` callback fires every ~20s with a refreshed token. |
 | `getQrLoginStatus(accountId)` | Returns `{ token, step, error }` for frontend polling. `step` is `qr \| 2fa \| done \| error`. |
 | `resolveQr2fa(accountId, password)` | Resolves the deferred Promise the `password` callback is waiting on, unblocking the auth flow. |
+| `disconnectMTProtoSession(accountId)` | Calls `api.auth.LogOut()` on Telegram's servers before disconnecting the client locally, then clears `sessionString` in the DB. See Module 11 Bug 1 for why server-side logout is required. |
 
 On successful scan: same session-save + `ProviderConnection` upsert + key mirror as the phone flow. Phone number obtained from `client.getMe().phone` (no user input needed).
 
@@ -1202,7 +1207,390 @@ Changed from `username || userId || phoneNumber` to `username || phoneNumber || 
 
 ---
 
-## Module 10 — UI Rework + Refinement (Days 7-8, ~16h)
+## Module 18 — ngrok & Local Webhook Tunneling (2026-06-16)
+
+### What ngrok actually is
+
+A reverse-proxy tunnel: it opens an outbound connection from your laptop to ngrok's servers, which then hands you a public HTTPS URL (`https://abc123.ngrok.io`) that forwards any incoming request straight to a port on `localhost`. Your code never changes — it still just listens on `localhost:4000`.
+
+### Why this project ever needed it
+
+Telegram (Bot API) and Meta (WhatsApp Cloud API) deliver events via **webhooks** — they make an outbound HTTP request to a URL you register. That URL must be public HTTPS. During local development your backend only exists at `localhost:4000`, which Telegram's and Meta's servers cannot reach. ngrok bridges exactly that gap: it makes a local server temporarily look like a deployed one.
+
+Documented dev workflow (`docs/MAINTAINER_GUIDE.md`):
+
+```bash
+ngrok http 4000
+# note the https URL returned, e.g. https://abc123.ngrok.io
+npm run set-webhook -- --url https://abc123.ngrok.io/api/providers/telegram/webhook
+```
+
+Same URL also went into Meta's webhook Callback URL field during development.
+
+### Current implementation in deployed production: none
+
+```bash
+grep -rn "ngrok" --include="*.ts" --include="*.json" .   # zero hits outside markdown docs
+```
+
+ngrok appears in exactly three files — `docs/MAINTAINER_GUIDE.md`, `docs/HANDOFF.md`, `PROJECT_ROADMAP.md` — all describing the *local* setup. It is not a dependency, not imported anywhere, not referenced in any deploy config. Render assigns the backend a real, permanent public HTTPS URL the moment it deploys. Per Module 15, both the Telegram webhook and the Meta webhook callback are pointed directly at that Render URL — no tunnel of any kind sits in between in production.
+
+### The same role, played by a different tool, at a different phase
+
+Module 16 Part B already covered this once from the other direction: a Cloudflare tunnel (`cloudflared tunnel --url http://localhost:...`) was used at one point instead of ngrok. Both tools solve the identical problem — "give my local server a public HTTPS face" — and neither one runs your code remotely; the backend logic always executes on whichever machine `localhost` refers to. The moment a *real* deployment exists (Render), the deployed host's own URL takes over that role permanently and the tunnel becomes irrelevant.
+
+### Key architectural insight
+
+ngrok's only job is to simulate "production reachability" without actually deploying. It's a development-loop accelerator, not infrastructure — nothing in the running app depends on it existing, which is why deleting it from your workflow entirely after deploying changes nothing.
+
+### Key questions for this module
+
+1. Why must a webhook URL be public HTTPS, while your own frontend calling your own backend during dev does not need to be?
+2. What is the actual difference between "ngrok forwards to localhost" and "the backend code runs on Render's servers"? Where does the code execute in each case?
+3. If you deleted every ngrok reference from the docs today, would anything in production behave differently? Why or why not?
+4. Module 16 mentioned a Cloudflare tunnel was in use "before Friday." Why didn't switching to Render's datacenter IP matter for the per-phone-number suppression bug, but it would have mattered if the original bug had been an IP-based block?
+
+---
+
+## Module 19 — CORS (2026-06-16)
+
+### What CORS actually is
+
+A restriction enforced by the **browser**, not the server. Same-Origin Policy says JavaScript running on origin A cannot read a response from origin B unless B's server explicitly says "this origin may read my response" via CORS response headers. Origin = scheme + host + port — `https://crypt.onrender.com` and `https://crypt-backend.onrender.com` are different origins even though both are "yours."
+
+**Flutter contrast (useful grounding):** there is no CORS in a Flutter mobile app making HTTP requests — Same-Origin Policy is a browser-only concept. This is the first place in the stack where "because it's a website" actually changes the architecture.
+
+### Why this project needs it at all
+
+Frontend and backend are always on different origins:
+
+| Environment | Frontend origin | Backend origin |
+|---|---|---|
+| Local dev | `http://localhost:5173` | `http://localhost:4000` |
+| Production | `https://<frontend>.onrender.com` | `https://<backend>.onrender.com` |
+
+Without CORS headers from the backend, every `fetch()` call from the frontend would be silently blocked by the browser after the response arrives (the request still hits the server — CORS doesn't stop that — but the browser refuses to hand the response back to your JS).
+
+### Two separate CORS configs in this codebase — and they're not quite the same
+
+**1. REST API — `backend/src/server.ts:29-35`**
+
+```ts
+app.use(
+  cors({
+    origin: parseOrigins(env.CORS_ORIGIN),
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+```
+
+**2. Socket.IO — `backend/src/services/realtime.service.ts:13-19`**
+
+```ts
+io = new Server(server, {
+  cors: {
+    origin: parseOrigins(corsOrigin),
+    methods: ["GET", "POST"],
+  },
+});
+```
+
+**Key question before reading further:** why does Socket.IO need its *own* `cors` block at all, when Express already has one mounted on the same `app`?
+**Answer:** the WebSocket upgrade handshake is a distinct HTTP exchange that bypasses Express's middleware stack entirely (recall Module 2: `initRealtime` attaches directly to the raw `http.Server`, not to `app`). Express's `cors` middleware never sees that request, so Socket.IO has to enforce its own origin check independently.
+
+### Spot the difference — two near-identical helper functions
+
+```ts
+// server.ts
+const parseOrigins = (raw?: string) => {
+  if (!raw) return undefined;
+  if (raw.trim() === "*") return "*";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+};
+
+// realtime.service.ts
+const parseOrigins = (raw: string) => {
+  if (raw.trim() === "*") return "*";
+  const origins = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return origins.length === 1 ? origins[0] : origins;
+};
+```
+
+Both exist to solve Module 15's Failure 8: `CORS_ORIGIN` may hold a comma-separated list (local + production origins together), but the `cors` and `socket.io` libraries each expect either a single string or an array — never a raw comma-separated string. So both functions split on commas. The difference: `realtime.service.ts`'s version collapses a single-entry array back down to a plain string; `server.ts`'s version always returns an array once there's at least one entry. Functionally this rarely matters (both libraries accept either shape for a single origin), but it's duplicated logic with a silent inconsistency — a clean refactor target: extract one shared `parseOrigins` util and import it in both places.
+
+### The preflight request
+
+For any "non-simple" request (anything with a JSON body, or a custom header like `Authorization`), the browser first sends an `OPTIONS` request asking permission *before* sending the real one. The server must answer with matching `Access-Control-Allow-Methods` / `Access-Control-Allow-Headers`. This is why `methods` and `allowedHeaders` are explicit allowlists here — `Authorization` had to be added by hand because the JWT bearer token rides in that header on every authenticated call; without it in `allowedHeaders`, the preflight would reject any request carrying a token.
+
+### Why production CORS broke before (Module 15 cross-reference)
+
+`CORS_ORIGIN` defaults to `http://localhost:5173` (`backend/src/config/env.ts`). The post-deployment checklist in Module 15 explicitly requires setting it to the *exact* frontend Render URL and redeploying the backend — a mismatch here is invisible in server logs (the request succeeds; the browser just refuses to expose the response), which makes it a confusing first production bug to diagnose.
+
+### Wildcard `origin: "*"`
+
+Both `parseOrigins` implementations special-case `"*"` — any origin allowed. This project's auth is Bearer-JWT-in-header, not cookies, so a wildcard origin is less dangerous here than it would be for a cookie-based session (cookies ride along automatically with cross-origin requests; a manually-attached `Authorization` header does not). Still broad — it would let any website's JS make authenticated calls if it could obtain a token some other way.
+
+### Key questions for this module
+
+1. Why does a CORS failure show as a successful network request in the Network tab, but a hard error in the console?
+2. Why does Socket.IO need a second `cors` config instead of inheriting Express's?
+3. What would `parseOrigins` need to do differently if `CORS_ORIGIN` were empty in production? (Trace through both implementations.)
+4. Why is `Authorization` in `allowedHeaders` but not in `methods`? What's the difference between the two lists?
+5. If this app used cookie-based sessions instead of JWT, why would `origin: "*"` become a much more serious vulnerability?
+
+---
+
+## Module 20 — Docker: What It's For, and Is It Actually Needed Here? (2026-06-16)
+
+### What Docker actually is
+
+A way to package an application together with everything below it — runtime, OS libraries, filesystem — minus the kernel, into a portable image that runs identically on any machine with a Docker engine. The promise is "works on my machine" becomes "works on every machine," because the container brings its own machine with it.
+
+### What exists in this repo
+
+Exactly one Dockerfile, backend only — `backend/Dockerfile`:
+
+```dockerfile
+FROM node:20-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json tsconfig.json ./
+COPY src ./src
+RUN npm ci
+RUN npm run build
+
+FROM node:20-slim AS runtime
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+ENV NODE_ENV=production
+EXPOSE 4000
+CMD ["node", "dist/server.js"]
+```
+
+**Multi-stage build, read top to bottom:**
+
+1. **`build` stage** — installs *all* deps (including devDependencies — `tsc`, `@types/*`), compiles TypeScript to `dist/`.
+2. **`runtime` stage** — starts fresh from a clean `node:20-slim`, installs only production deps (`--omit=dev`), then copies *just the compiled output* (`COPY --from=build /app/dist ./dist`) from the first stage. The TypeScript source, dev tooling, and build-time-only packages never make it into the final image.
+
+**Why two stages instead of one:** the final image is smaller and has a reduced attack surface — no compiler, no type definitions, no source code sitting in the production container.
+
+There is no frontend Dockerfile, and there doesn't need to be — the frontend builds to static HTML/JS/CSS (`dist/`), which a static host serves directly. There's no Node runtime to containerize on that side.
+
+### Where Docker is actually invoked in this project
+
+One place: `docs/DEPLOYMENT.md`, a manual local workflow —
+
+```bash
+cd backend
+docker build -t crypt-backend:latest .
+docker run -p 4000:4000 -e MONGODB_URI="..." ... crypt-backend:latest
+```
+
+This is for testing the backend in an isolated container on your own machine. Nothing else in the repo runs `docker build` or `docker run` — no CI step, no deploy script.
+
+### Is it used in the actual deployed production path? No.
+
+Cross-reference Module 15's real Render setup:
+
+> Dashboard → New → **Web Service** → Build command: `npm ci --include=dev && npm run build` → Start command: `npm start`
+
+That's Render's native Node buildpack — it clones the repo, runs your build command directly on Render's own managed Linux image, and starts your process with your start command. It never reads, builds, or runs `backend/Dockerfile`. (Render *does* support a Docker-based service type, which would use the Dockerfile automatically — but this project's service was set up as the Node-native type.)
+
+This also explains why Modules 13-14 are full of npm-buildpack-specific headaches — `.node-version` pinning, `optionalDependencies` for Linux-native binaries, the `npm ci` vs lock-file-version fight. **None of those problems exist inside a Docker build.** Docker pins the OS and Node version explicitly in the `FROM` line; you control the base image yourself, so there's no "Render decided to use Node 24" surprise. That entire category of production bug only happened *because* Docker wasn't the deploy path.
+
+### Verdict: not needed for this project, as currently deployed
+
+You could delete `backend/Dockerfile` today and the live Render deployment would be unaffected — nothing reads it. It is not dead code in the sense of being unreachable; it's an unused alternate path that happens to still work if invoked manually.
+
+**Where it would start to matter:**
+
+- Migrating off Render to a host that requires a container image (Fly.io, AWS ECS/Fargate, Cloud Run, a self-managed VM).
+- Wanting guaranteed build-environment parity locally — building inside the `node:20-slim` container sidesteps the macOS-vs-Linux native-binary problem from Module 14 entirely, since the container always builds on Linux.
+- Adding a second co-located process (a worker, a queue consumer) where `docker-compose` would let you start everything with one command.
+
+**One documentation inconsistency worth flagging (not fixed here, just noted):** `docs/DEPLOYMENT.md` lists "Backend (Docker)" as the *first* section, ahead of "Render / Static deploy" — easy for a future reader to assume Docker is the canonical production path when it's actually unused there. Worth reordering or annotating next time that file is touched.
+
+### Key questions for this module
+
+1. Why does the Dockerfile install `devDependencies` in the `build` stage but `--omit=dev` in the `runtime` stage? What would break if you skipped the multi-stage split and just did everything in one stage?
+2. Module 13's Failure 3 (`@types/express` missing because `NODE_ENV=production` made npm skip devDependencies) — would that bug have been possible inside this Dockerfile? Why or why not?
+3. Why doesn't the frontend need a Dockerfile even though the backend does?
+4. If you switched Render's backend service from "Web Service (Node)" to "Web Service (Docker)" tomorrow, which of Modules 13 and 14's bugs would simply stop being possible, and which would still apply?
+5. Is there any harm in leaving an unused Dockerfile in the repo? Is there harm in deleting it?
+
+---
+
+## Module 21 — Security & Redundancy Hardening Session (2026-06-16)
+
+A full audit-and-fix session: security audit, dead-code audit, scalability writeup, and a spec-accuracy check, followed by implementing the specific fixes approved. Full detail (every file touched, restoration notes) lives in `REFACTOR/AUDIT_CHANGELOG.md` — this module covers the *why* and the judgment calls, in the same case-study format as Modules 11-17.
+
+---
+
+### Part A — What the audit found
+
+Two parallel research agents covered security and dead code; direct verification covered scalability and `CRYPT_SPECS.md` drift. Headline findings:
+
+- **Critical:** `GET /provider/resolve` had no auth and leaked a user's email given just their Telegram/WhatsApp chat ID. **Zero rate limiting existed anywhere in the app.**
+- **High:** no login lockout; file uploads had no size/type validation.
+- **Dead code:** an orphaned 335-line component (`TelegramDirectSetup.tsx`), two near-identical `parseOrigins` functions, a display-name-joining snippet duplicated across 4 call sites (not 3 — more on that below), two backend functions with zero callers, one write-only schema field.
+- **Spec drift:** `CRYPT_SPECS.md` was written before WhatsApp shipped and before the server-side key backup shipped — it described both as not-yet-built. Stack versions were wrong across the board (Express 4→5, Mongoose 8→9, React 18→19, Vite 5→8, TypeScript 5→6).
+
+---
+
+### Part B — Why "the obvious fix" wasn't always the right one
+
+This is the part worth studying closely — several fixes that looked simple on paper had a real workflow risk hiding underneath.
+
+**1. Adding `authenticate` to a route isn't free if the frontend doesn't send a token.**
+`FindContact.tsx` called `apiFetch(path)` with no third argument. `apiFetch`'s signature is `(path, options, token?)` — it only attaches `Authorization` if you explicitly pass a token. The Find page is rendered inside `ProtectedLayout`, so it *looked* authenticated, but the actual HTTP call carried no proof of that. Gating the route server-side without fixing the frontend call would have broken Find immediately on deploy. **Pattern:** "this component only renders when logged in" and "this component's network calls are authenticated" are two different claims — verify the second one by reading the actual fetch call, not by checking where the component sits in the tree.
+
+**2. Dead code that touches encryption needs a higher bar of proof than a single grep.**
+The redundancy audit flagged `encryptText`/`decryptMarkedText` (in `backend/src/services/crypto.service.ts`) as unused. Given "the whole point of this app is encryption," that claim got re-verified by enumerating *every* import statement that pulls from the services barrel across the entire backend (9 sites, listed explicitly) rather than trusting one grep for the literal function name — aliased imports (`import { encryptText as foo }`) would dodge a plain-name search. The re-check confirmed it: these two functions were built for a documented-but-never-wired-up "encrypt provider credentials at rest" feature, completely separate from the real E2E message encryption in `frontendReactJs/src/lib/crypto.ts`. Even with that confirmed, the decision was to leave them in place — zero cost to keeping unused code, and this corner of the codebase is exactly where you don't want to be wrong.
+
+**Refactor Pass 1 update (C1, 2026-06-20):** These functions are no longer dead code. `encryptText` is now called on two write paths in `telegram-mtproto.service.ts` to encrypt Telegram session strings before saving to DB; `decryptMarkedText` is called on session load. The `DEMO_ENCRYPTION_KEY` env var is now required for any MTProto deployment, not just demo scenarios.
+
+**3. "Write-only" doesn't mean "safe to delete" if real data already depends on the shape staying consistent.**
+`Message.providerMessageId` is written in 4 places and read in zero. Normally that's a clean removal. But removing a Mongoose schema field doesn't delete the field from already-stored MongoDB documents — it just stops the app from reading/writing it. Since live test-user data already exists, the field was left in place rather than removed, even though "currently unread" was independently confirmed. The lesson isn't "schema field removal is dangerous" (it isn't — Mongoose schemas aren't migrations), it's that *unread* and *irrelevant* aren't the same thing once real data exists.
+
+**4. Validation can't apply uniformly when one data path is ciphertext.**
+The new upload MIME allow-list could not simply apply to "all uploads" — encrypted attachments are sent as `resourceType: "raw"` and are genuinely indistinguishable from random bytes; you cannot MIME-sniff ciphertext. Before writing the validation, the actual call graph in `frontendReactJs/src/services/messages.ts` was traced end-to-end: the encrypted path always goes through `/uploads/formidable` with `resourceType: "raw"` and *never* falls back to `/uploads/base64`; the plain path never sets `resourceType` at all. That trace is what made it possible to write a validation rule that's airtight by construction (`resourceType !== "raw"` skips the check entirely) rather than "probably fine."
+
+**5. A security default that's correct in general can be wrong for one specific user.**
+The standard advice for login lockout is ~5 attempts. That number assumes a typical single-device user. This account is actively tested across 2 phones and 2 laptops (per ongoing project notes) — a tight lockout threshold would lock out *legitimate* multi-device testing before it ever stopped an attacker. Settled on 8 attempts / 15-minute lockout, and the same reasoning applied to the rate-limit threshold on `/auth/login` (20 req/15min, more generous than a typical API default).
+
+---
+
+### Part C — The "3 sites" that turned out to be 4
+
+The plan going in said the display-name-joining duplication existed at 3 call sites. While implementing it, a 4th turned up: `telegram-mtproto.service.ts`'s phone-auth flow (`completePhoneAuth`) has its *own* `ProviderConnection` auto-create block with the identical join fragment, separate from the QR-login one. It wasn't found during the planning phase because the original grep for the duplicated fragment was run before the QR-login fallback-order context made it obvious there'd be a sibling code path for the other login method. **Pattern:** when you find N copies of duplicated logic via search, treat N as a lower bound until you've checked every code path that does the same *job*, not just every literal string match.
+
+---
+
+### Key questions for this module
+
+1. Why does checking "is this component inside `ProtectedLayout`" not prove its network calls are authenticated? What's the actual mechanism that would prove it?
+2. Why was a single `grep -rn "encryptText"` not sufficient evidence to call a function dead code, even though it happened to be correct in this case?
+3. Mongoose schema field removal vs. data deletion — what's actually true about existing MongoDB documents when you delete a field from a model file?
+4. Why can't the upload MIME allow-list apply to `resourceType: "raw"` uploads? What would happen if you tried to MIME-sniff an AES-GCM ciphertext blob?
+5. The standard advice for login lockout thresholds assumes something about the user's device habits. What does it assume, and why did that assumption not hold here?
+6. When a duplicate-logic search finds 3 matches, why might there be a 4th one that the search missed? What kind of search would have caught it the first time?
+
+---
+
+## Module 22 — User-to-User E2E Key Flow (how two Crypt users actually encrypt messages to each other)
+
+**Why this module exists:** Module 9's original plan described a dedicated pairing document with dual public keys. That was never built. This module covers what WAS built: how two Crypt users end up with a shared ECDH key without any explicit pairing step.
+
+### The question: if there's no pairing document, how do two users encrypt messages to each other?
+
+Answer: the frontend derives the shared key on-the-fly at send time using the recipient's public key from the `Key` collection. No pairing step needed — just both users having registered their public keys.
+
+**Files to read (in order):**
+
+1. `backend/src/models/key.ts` — what a `Key` document stores: `{ ownerId (email), publicKey, privateKeyJwk (encrypted blob) }`
+2. `backend/src/routes/keys.route.ts` + `controllers/keys.ts` — `GET /keys/:ownerId` (fetch any user's public key), `POST /keys/register`, `GET /keys/me/private`
+3. `frontendReactJs/src/lib/crypto.ts` — `deriveAesGcmKey(myPrivateKey, theirPublicKey)` → shared AES key → `encryptForRecipient` / `decryptFromSender`
+4. `frontendReactJs/src/hooks/useSend.ts` — where key lookup + encrypt happens before POST
+
+**The flow for sending an encrypted message:**
+
+```
+User clicks Send
+→ useSend fetches recipient's public key from GET /keys/:ownerId
+→ derives shared AES key via ECDH (myPrivate × theirPublic)
+→ AES-GCM encrypts the plaintext
+→ POST /api/messages with encryptedText
+→ server stores ciphertext (never sees plaintext)
+→ recipient's browser fetches message
+→ derives same shared AES key (theirPrivate × senderPublic)
+→ AES-GCM decrypts → plaintext displayed
+```
+
+**Key question:** Both users independently derive the same AES key without ever sending it to each other or to the server. How is that possible? (Paint mixing analogy from Module 5.)
+
+**Also read:** `backend/src/controllers/keys.ts` lines around `getKey` — the fallback chain via `ProviderConnection` that lets the server resolve a key from a Telegram user ID when no direct `ownerId` match exists (added in Module 17).
+
+---
+
+## Module 23 — Security Remediation: Router-Level Authorization (2026-06-20)
+
+Full security audit + remediation pass. Full detail in `REFACTOR/PASS2/REFACTOR_PASS_2_CORRECTION.md`. This module covers the security model, the gap that was closed, and the implementation decisions.
+
+---
+
+### Part A — The Gap: authentication ≠ authorization
+
+After Refactor Pass 1, all protected routes had `authenticate` middleware — which proves *who* the caller is. None of them had `authorize` middleware — which proves *the caller owns the resource they're touching*.
+
+The distinction:
+- `authenticate`: "your JWT is valid, I know you're accountId X"
+- `authorize`: "accountId X owns the resource this route is operating on"
+
+Without `authorize`, any valid JWT from any user could call `DELETE /auth/account` and it would delete *that user's account*, not someone else's — because the controller was responsible for the ownership check. But that controller-level check only fired *after* the route was reached. This is a defense-in-depth gap: the route itself has no protection.
+
+**Security principle:** protect at the outermost layer you control. Route middleware runs before the controller. If the route is wrong for this caller, don't reach the controller at all.
+
+---
+
+### Part B — The `authorize()` extension
+
+The existing `authorize(loader)` middleware fetches a resource and checks ownership. To support routes with no URL-identified resource (e.g. `GET /auth/me`, `GET /messages`, all of which are "my own data"), `authorize` was extended to support a no-argument call:
+
+```ts
+authorize()        // self-authorization: asserts req.account exists, calls next()
+authorize(loader)  // resource-ownership: fetches resource, checks owner
+```
+
+Both paths first check `req.account` — so `authorize()` alone is not a substitute for `authenticate`, but a complement: it asserts that `authenticate` ran and populated `req.account`.
+
+**Pattern:** `authenticate` = "who are you?", `authorize()` = "confirm you're authenticated and this is your endpoint", `authorize(loader)` = "confirm you own this specific resource".
+
+---
+
+### Part C — The dead endpoint
+
+`GET /provider/resolve` resolves a provider chat ID (Telegram user ID / WhatsApp phone) to an internal Crypt `accountId`. No frontend code calls this — confirmed by `grep -rn "provider/resolve" frontendReactJs/`. The backend resolves fan-out internally via direct DB queries, not via this HTTP endpoint.
+
+With any valid JWT, a user could enumerate whether any given Telegram/WhatsApp contact is a Crypt user by brute-forcing chat IDs. This is membership enumeration.
+
+Fix: `requireAdmin` replaces `authenticate` — the endpoint is now admin-only, not user-accessible.
+
+**Pattern:** Endpoints with no legitimate user-facing caller should not be user-accessible. "An authenticated user isn't a bad actor" is not a security property — it's an assumption about expected behavior.
+
+---
+
+### Part D — Rate limiting coverage gap
+
+The 2026-06-16 audit added rate limiting to auth and link endpoints. It missed the Telegram direct auth endpoints — `request-code`, `verify-code`, `request-qr`, `qr-2fa`. These all trigger external Telegram API calls and/or phone number operations. An unthrottled caller could:
+- Trigger phone code delivery spam (Telegram penalizes apps for this)
+- Brute-force the verify-code step
+
+**What was not rate-limited:** `GET /direct/status` and `GET /qr-status`. These are in-memory reads. At 4-second QR polling, rate-limiting `qr-status` at 20 req/15 min would block login in ~80 seconds of normal use. Rate limiters should protect resources, not lock out legitimate flows.
+
+---
+
+### Part E — Swagger as a honeypot
+
+The Swagger UI (`/api/docs`) and OpenAPI spec (`/api/openapi.json`) expose the full API surface — every route, its parameters, its request/response shapes. In a private deployment, this is a recon tool for anyone who can reach the server.
+
+Fix: `process.env.NODE_ENV === "production"` gates both routes behind `authenticate`. Locally (dev, `NODE_ENV` unset), they're open — ergonomics. In production (Render, `NODE_ENV=production` set), they require a valid JWT.
+
+**Why CSP is still disabled:** Swagger UI loads from `unpkg.com` CDN and uses inline `<script>` tags. Helmet's default Content-Security-Policy blocks both. Since Swagger is the only HTML page, disabling CSP for it via `helmet({ contentSecurityPolicy: false })` is the correct scope trade-off — all other helmet headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy) remain active.
+
+---
+
+### Key questions for this module
+
+1. `authenticate` middleware runs first and confirms the JWT is valid. Why is `authorize()` still needed after that? What additional claim does it make that `authenticate` alone cannot?
+2. `GET /auth/me` returns the caller's own account info. The controller already uses `req.account.accountId` to scope the response — it's impossible for it to return another user's data. So why does `authorize()` still add value here?
+3. `GET /provider/resolve` was changed from `authenticate` to `requireAdmin`. What was the security risk of leaving it as `authenticate`?
+4. Why were `GET /direct/status` and `GET /qr-status` not rate-limited, even though the other 5 Telegram routes were?
+5. Swagger's `prodGuard` is `process.env.NODE_ENV === "production" ? [authenticate] : []`. What happens in a Render deployment if `NODE_ENV` is not set? Is the Swagger UI exposed or not?
+6. `helmet({ contentSecurityPolicy: false })` disables CSP globally. Name three other HTTP security headers that helmet still sets by default, and what each one does.
+
+---
 
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
 
@@ -1282,18 +1670,26 @@ MODULE STATUS:
 [x] Module 3 (entry/auth/pages known) — [x] hooks + API layer completed 2026-06-11
 [x] Module 4 - Auth (known)
 [x] Module 5 - Cryptography — completed 2026-06-11
-[ ] Module 6 - Telegram MTProto
-[ ] Module 7 - Socket.IO realtime
-[ ] Module 8 - Media uploads
-[ ] Module 9 - Link/pairing system
+[x] Module 6 - Telegram MTProto — completed 2026-06-18
+[x] Module 7 - Socket.IO realtime — completed 2026-06-18
+[x] Module 8 - Media uploads — completed 2026-06-19
+[x] Module 9 - Provider link system — completed 2026-06-19
+[x] Module 22 - User-to-user E2E key flow — completed 2026-06-19
 [ ] Module 10 - UI rework (pre-deadline)
-[x] Module 11 - Real-world debugging session — completed 2026-06-15
-[x] Module 12 - WhatsApp Business API integration — completed 2026-06-15
-[x] Module 13 - Production deployment debugging — completed 2026-06-15
-[x] Module 14 - Frontend deployment: native binary platform packages — completed 2026-06-15
-[x] Module 15 - Production deployment guide + post-deployment bugs — completed 2026-06-15
-[x] Module 16 - Telegram linking debugging + multi-mode connection UI — completed 2026-06-15
-[x] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — completed 2026-06-15
+[x*] Module 11 - Real-world debugging session — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 12 - WhatsApp Business API integration — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 13 - Production deployment debugging — executed 2026-06-15, SKIM PENDING
+[x*] Module 14 - Frontend deployment: native binary platform packages — executed 2026-06-15, SKIM PENDING
+[x*] Module 15 - Production deployment guide + post-deployment bugs — executed 2026-06-15, SKIM PENDING
+[x*] Module 16 - Telegram linking debugging + multi-mode connection UI — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 17 - Message delivery debugging: ghost connections + mobile reconnect — executed 2026-06-15, CORE REVIEW PENDING
+[x*] Module 18 - ngrok & local webhook tunneling — executed 2026-06-16, SKIM PENDING
+[x*] Module 19 - CORS deep dive — executed 2026-06-16, SKIM PENDING (mostly historical, see Module 21 fix)
+[x*] Module 20 - Docker & containerization (is it needed?) — executed 2026-06-16, SKIM PENDING
+[x*] Module 21 - Security & redundancy hardening session — executed 2026-06-16, CORE REVIEW PENDING
+[x*] Module 23 - Security remediation: router-level authorization — executed 2026-06-20, CORE REVIEW PENDING
+
+[x*] = work was done by Claude under Grace's supervision and documented, but NOT yet reviewed/understood by Grace. Do not treat as taught until the review pass happens.
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)
 ```
 
@@ -1330,6 +1726,91 @@ MODULE STATUS:
 | `useMemo(() => value, [deps])` | Memoizes a computed value/object — only recomputes when a dependency changes. Prevents unnecessary re-renders when a hook returns an object that would otherwise be a new reference every render.                                                                                                           |
 | `useRef(initial)`              | A mutable box (`ref.current`) that persists across renders without triggering a re-render when changed. Use cases: (1) hold a DOM reference, (2) stale closure fix — store a callback in the ref and update it each render so a long-lived closure (e.g. a socket handler) always calls the latest version. |
 
+### Module 9 — 2026-06-19
+
+**Corrections given:**
+
+- **Telegram method 1 described as a deep link:** Said method 1 uses "a direct deep link with a code sent through Telegram's official account." Correction: no deep link in method 1. It's phone number → `sendCode` → code delivered as an in-app Telegram message from the "Telegram" account → `signIn`. Deep links are used in the CryptBot tab to pre-fill the code, not in the phone auth flow.
+- **QR code thought to route through CryptBot:** Said QR and CryptBot both relay messages through the bot. Correction: QR creates a full MTProto session via `signInUserWithQrCode` — same direct result as phone code. Only the CryptBot tab routes messages through the bot.
+- **`/provider/link/complete` caller unclear:** Guessed "called by Crypt." Correction: the webhook handlers in `providers.ts` complete links directly by writing to the `Link` document — they bypass the `/provider/link/complete` route entirely. The route with `requireAdmin` exists as a safe external path but nothing in the current codebase calls it.
+- **`FindContact.tsx` scope:** I incorrectly suggested `FindContact.tsx` was part of Module 9. Grace correctly pushed back — it's for finding existing users to start a conversation with, not for linking a provider.
+- **"Only legitimate callers" framing:** Said adding auth to the status endpoint mattered because "the only legitimate caller is the frontend." Grace correctly called this out — security measures exist for illegitimate callers, not legitimate ones.
+
+**Good instincts:** Immediately identified the distinction between provider linking and user-to-user conversation linking before any code was opened — that's the right first question. Correctly identified sessionStorage purpose (tab navigation on mobile destroys React state). Read the `visibilitychange` comment correctly and understood the polling/interval relationship. Sharp unprompted security observation that `GET /provider/link/status/:code` is unauthenticated and leaks PII — led to two new REFACTOR_NOTES entries.
+
+---
+
+### Module 22 — 2026-06-19
+
+**Corrections given:**
+
+- **`keyUsages: []` misread as placeholder:** Grace described the empty array as "a placeholder for a required value." Correction: it is the correct answer — an ECDH public key genuinely has no usages as a key. It is only ever passed as the `public:` argument inside another key's `deriveBits` call, so its own usage list is empty by design, not as a workaround.
+- **`privJwk` missing reason:** Grace attributed possible absence to DB connection issues. Correction: the caller simply didn't pass it. `useSend` passes `opts.privJwk` which can be `null`. The localStorage fallback in `sendMessageService` is a recovery path for that case, not a DB failure handler.
+- **IV split confused with marker strip:** Grace described lines 121–122 of `decryptFromSender` as separating `[CRYPT:v1]` from encrypted content. Correction: the marker strip happens earlier on line 118 (string slice). Lines 121–122 operate on raw bytes, splitting at a fixed position — first 12 bytes are the IV, everything after is ciphertext. The fixed split works because the IV is always exactly 12 bytes, not because of a delimiter.
+- **`useSend` ownership:** Grace described the options object passed to `sendMessage` as what the hook owns. Correction: `useSend` owns exactly one piece of state — `busy` (line 5). Everything else flows in from outside. The hook's only job is to wrap the send call with a loading flag and trigger the post-send refresh.
+
+**Good instincts:** Immediately recalled the ECDH derivation correctly at the start (own private × other's public = same shared key on both sides, independently). Sharp unprompted observation that `GET /keys/:ownerId` being unauthenticated could enable membership enumeration via email — led to REFACTOR_NOTES entry. Correctly identified the missing authorization layer at router + controller level and articulated that authentication and authorization are two different guarantees. Spotted silent `// ignore` catch blocks as a systemic problem — led to the logging strategy entry in REFACTOR_NOTES. Good question about email in JWT being PII — led to a detailed four-phase migration plan in REFACTOR_NOTES.
+
+**Key concepts confirmed understood:**
+
+- ECDH: `A_private × B_public = B_private × A_public` — both sides independently derive the same AES key, neither side sends it
+- `[CRYPT:v1]` marker: version prefix prepended to `base64(IV + ciphertext)`; stripped before byte-level parsing
+- IV: 12 random bytes, prepended to ciphertext, recovered on decrypt by fixed-position split — no delimiter needed
+- `info: "crypt-companion v1"` in HKDF: domain separator — same keypairs + different info = different AES key, preventing cross-protocol key reuse
+- `Key.ownerId` dual identity: email for Crypt users, provider chat ID for mirrored keys — why it's a plain string, not an ObjectId ref
+- `sendMessageService` full flow: localStorage fallback for private key → unauthenticated fetch of recipient public key → ECDH derive → AES-GCM encrypt → POST `/messages/send`
+- `conversationTarget` vs `selectedChatId`: target = recipient identifier used for key lookup and `to` field; chatId = conversation thread ID for UI grouping
+
+**REFACTOR_NOTES entries added this session:**
+- `GET /keys/:ownerId` needs `authenticate` (membership enumeration via email)
+- Authorization layer required at router + controller level for all protected routes
+- Production-readiness standard applies to all future audits
+- Email in JWT is PII — four-phase migration plan to accountId-only token
+- `privJwk: any` needs a proper `EcdhPrivateJwk` interface type
+- Silent catch blocks: errors must be visible to users AND logged
+- Logging strategy: Pino (backend) + MongoDB logs collection + Sentry (optional)
+
+**LEARNER_GUIDE.md entry added:** `"deriveKey"` in `importPrivateJwkKey` usages is intentionally kept as a learning reference documenting the `deriveBits` vs `deriveKey` distinction. Do not remove without updating that note.
+
+---
+
+### Module 8 — 2026-06-19
+
+**Corrections given:**
+
+- **`downloadAndUploadWhatsappMedia` direction:** Described as "uploading to WhatsApp." Correction: it downloads FROM Meta's servers and uploads TO Cloudinary. Crypt never uploads anything to Meta — WhatsApp users' apps do that automatically. Crypt only retrieves bytes that already exist on Meta's servers.
+- **Pre-lunch Q1 (multipart):** Gist correct but reason imprecise. Correction: the issue is `Content-Type` mismatch — `express.json()` only activates on `application/json` requests; multipart is a completely different encoding with a boundary-separated body that requires Formidable to parse.
+
+**Good instincts:** Correctly identified that encrypted attachments use the base64 JSON path (Q2). Correctly identified that file upload was intentional non-MVP scope cut. Sharp gap analysis — independently identified missing Telegram download, WhatsApp outbound, and Telegram outbound paths. Good question on buffer confusion (what the buffer actually is). Meta data hoarding observation showed practical understanding of why Cloudinary re-hosting is necessary.
+
+**Refactor items filed this session:** Telegram inbound media download (missing), WhatsApp outbound media (missing), Telegram outbound media (needs verification), base64 MIME validation weakness, all marked as intentional non-MVP.
+
+---
+
+### Module 7 — 2026-06-18
+
+**Corrections given:**
+
+- **`socket.emit` vs `io.emit` reversed:** Thought `socket` = server broadcast, `io` = single client. Correction: `socket` = the one client that just connected; `io` = all connected clients simultaneously.
+- **Security implication framing:** Attributed broadcast-to-all acceptability to "Telegram wouldn't authorize two accounts from the same browser." Correction: acceptability is because (1) it's a private/demo deployment, (2) frontend filters by `accountId`, (3) E2E messages are ciphertext anyway.
+
+**Good instincts:** Flutter `StreamSubscription` analogy was directionally correct. Understood `callbackRef` stale closure concept and the separation of JavaScript mutation from React's render cycle. Productive tangent on Zod vs Mongoose schemas led to new REFACTOR_NOTES standards (InferSchemaType for Mongoose, z.infer<> for Zod, manual interfaces only where neither applies).
+
+---
+
+### Module 6 — 2026-06-18
+
+**Corrections given:**
+
+- **`clients` Map purpose:** Initial guess was "list available chats." Correction: one live MTProto connection per linked Crypt account — the server acts as multiple Telegram apps simultaneously.
+- **Bot echo filter direction:** Described as "filters messages arriving TO CryptBot." Correction: filters messages FROM the CryptBot that echo back to an MTProto-connected account, preventing spurious duplicate conversations.
+- **`phoneCodeHash` as security risk:** Thought it was the plaintext code stored insecurely. Correction: it's a correlation token Telegram returns when the code is requested — must be echoed back to prove the submission matches the original request. The plaintext code is never stored.
+- **`active: false` = holding pattern:** Thought it queued the session for retry. Correction: it's a dead end — client never added to `clients` map, session never reconnects, user must re-authenticate.
+
+**Good instincts:** Correctly identified that `clients` is one entry per user (not per chat). Correctly understood that `subscribeToMessages` is a live event listener. Correctly identified `SESSION_PASSWORD_NEEDED` as 2FA. Good question about no-try-catch in services — understood the pattern (services throw, controllers catch) after explanation. Sharp question about planned usage of `encryptText`/`decryptMarkedText` led to filing the TelegramSession encryption security item in REFACTOR_NOTES.
+
+---
+
 ### Module 2 — 2026-06-11
 
 **Corrections given:**
@@ -1354,6 +1835,29 @@ Based on actual pace (3 modules completed in 1 day vs 3 days estimated) and Clau
 | **Total remaining**            | **~8 days** |
 
 Deadline: 2026-06-24 (~13 days away). Comfortable buffer.
+
+---
+
+## Re-Evaluation (2026-06-16)
+
+**What changed:** 5 days passed since the last estimate. Deadline (2026-06-24) is now **8 days away**, not 13. In that gap, Modules 11-21 happened: WhatsApp integration, production deployment to Render, multiple live debugging sessions, and a full security/redundancy audit. All necessary, none of it was in the original plan.
+
+**Important correction (Grace, 2026-06-16):** Modules 11-21 are marked `[x]` in the tracker because the work was *executed and documented* — by Claude, under Grace's supervision. That is not the same as Grace having reviewed and understood the resulting code, which is the actual goal of this lesson plan. Supervision ≠ comprehension. These modules still need a real pass: read the actual diff/file, answer the "Key questions" section each module already ends with, flag refactor-for-readability candidates.
+
+**Prioritization decision (Grace, 2026-06-16):** Given ~8 days left and a full review of all 11 debugging/deployment modules would take ~4.3 days alone, scope is split:
+
+- **Core review (full depth — touches app logic Grace would actually refactor):** Modules 11, 12, 16, 17, 21
+- **Skim (confirm key takeaways only — infra/deploy plumbing, not app code):** Modules 13, 14, 15, 18, 19, 20 (Module 19/CORS downgraded to skim because Module 21 already fixed the duplicate-`parseOrigins` issue it flagged — largely historical now)
+
+| Group | Est. |
+|---|---|
+| Core review (11, 12, 16, 17, 21 — full depth) | 2.5 days |
+| Skim (13, 14, 15, 18, 19, 20) | 0.6 days |
+| Still-open teaching (6 light pass, 7 recap, 8, 9 synthesis, 10 UI rework) | ~3 days |
+| Refactor backlog (`REFACTOR_NOTES.md`, Claude-led) | ~1.75 days |
+| **Total** | **~7.85 days** |
+
+Against **8 days remaining**. Essentially zero buffer — tighter than the 2026-06-11 estimate, almost entirely because the deadline moved closer during the production work, not because the remaining scope grew much. Module 10 (UI rework) remains the most likely item to overrun, now with no slack left to absorb it if it does.
 
 ---
 

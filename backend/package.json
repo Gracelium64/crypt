@@ -8,6 +8,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "set-webhook": "tsx ./src/scripts/telegram-set-webhook.ts",
+    "backup:keys": "tsx src/scripts/backup-keys-before-migration.ts",
+    "migrate:key-owner-ids": "tsx src/scripts/migrate-key-owner-ids.ts",
+    "rollback:key-migration": "tsx src/scripts/rollback-key-migration.ts",
     "start": "node dist/server.js",
     "test-presign": "node ./scripts/test-presign.js"
   },
@@ -55,7 +58,10 @@
     "cors": "2.8.6",
     "dotenv": "17.4.2",
     "express": "5.2.1",
+    "express-rate-limit": "8.5.2",
+    "file-type": "22.0.1",
     "formidable": "3.5.4",
+    "helmet": "8.2.0",
     "jsonwebtoken": "9.0.2",
     "mime-types": "2.1.35",
     "mongoose": "9.6.3",
@@ -67,6 +73,7 @@
   "devDependencies": {
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
+    "@types/mime-types": "3.0.1",
     "@types/node": "25.9.1",
     "tsx": "4.22.3",
     "typescript": "6.0.3"

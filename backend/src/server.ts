@@ -1,8 +1,9 @@
 import http from "node:http";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import "#db";
-import { env } from "#config";
+import { env, parseOrigins } from "#config";
 import {
   messagesRouter,
   providersRouter,
@@ -14,18 +15,15 @@ import {
   providerConnectionsRouter,
   swaggerRouter,
   telegramRouter,
+  honeypotRouter,
 } from "#routes";
 import { initRealtime, loadAllMTProtoSessions } from "#services";
 import { notFoundHandler, errorHandler } from "#middleware";
 
 const app = express();
 
-const parseOrigins = (raw?: string) => {
-  if (!raw) return undefined;
-  if (raw.trim() === "*") return "*";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
-};
-
+app.set("trust proxy", 1);
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
   cors({
     origin: parseOrigins(env.CORS_ORIGIN),
@@ -54,6 +52,7 @@ app.use("/api", linkRouter);
 app.use("/api", providerConnectionsRouter);
 app.use("/api", swaggerRouter);
 app.use("/api", telegramRouter);
+app.use("/api", honeypotRouter);
 
 app.use("*splat", notFoundHandler);
 app.use(errorHandler);

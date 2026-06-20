@@ -1,14 +1,9 @@
 import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import type { MessageDocument } from "#models";
+import { parseOrigins } from "#config";
 
 let io: Server | null = null;
-
-const parseOrigins = (raw: string) => {
-  if (raw.trim() === "*") return "*";
-  const origins = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  return origins.length === 1 ? origins[0] : origins;
-};
 
 export const initRealtime = (server: HttpServer, corsOrigin: string) => {
   io = new Server(server, {
@@ -20,13 +15,18 @@ export const initRealtime = (server: HttpServer, corsOrigin: string) => {
 
   io.on("connection", (socket) => {
     socket.emit("system:status", { message: "realtime connected" });
+    socket.on("join:account", (accountId: string) => {
+      socket.join(`account:${accountId}`);
+    });
   });
 };
 
 export const broadcastMessage = (message: MessageDocument) => {
-  io?.emit("message:new", {
+  const accountId = message.accountId?.toString();
+  if (!accountId) return;
+  io?.to(`account:${accountId}`).emit("message:new", {
     id: message._id.toString(),
-    accountId: message.accountId?.toString(),
+    accountId,
     provider: message.provider,
     direction: message.direction,
     from: message.from,

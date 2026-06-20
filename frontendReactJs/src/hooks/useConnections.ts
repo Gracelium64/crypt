@@ -1,8 +1,11 @@
 import { useCallback, useState } from "react";
+import { z } from "zod";
 import { apiJson } from "../lib/api";
+import type { Connection } from "../types";
+import { ConnectionSchema } from "../schemas";
 
 export default function useConnections(authToken?: string | null) {
-  const [connections, setConnections] = useState<any[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [connectionsBusy, setConnectionsBusy] = useState(false);
 
   const loadConnectionsList = useCallback(async () => {
@@ -13,8 +16,11 @@ export default function useConnections(authToken?: string | null) {
     setConnectionsBusy(true);
     try {
       const j = await apiJson("/provider/connections", {}, authToken);
-      setConnections(j.data ?? []);
-    } catch {
+      const parsed = z.array(ConnectionSchema).safeParse(j.data ?? []);
+      if (parsed.success) setConnections(parsed.data);
+      else console.error("[Connections] response shape mismatch:", parsed.error);
+    } catch (err) {
+      console.error("[Connections] loadConnectionsList failed:", err);
       setConnections([]);
     } finally {
       setConnectionsBusy(false);

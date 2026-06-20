@@ -17,6 +17,7 @@ type Props = {
 };
 
 import { useState } from "react";
+import "../styles/components/link-wizard.css";
 
 export default function LinkWizard(props: Props) {
   const {
@@ -47,7 +48,7 @@ export default function LinkWizard(props: Props) {
         provider client (Telegram or WhatsApp) to link this browser session to
         the hosted connector.
       </p>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="lw-btn-row">
         <button onClick={() => void startLink("telegram")} disabled={linkBusy}>
           Link Telegram
         </button>
@@ -59,8 +60,8 @@ export default function LinkWizard(props: Props) {
       {linkCode && (
         <div className="link-status">
           <label>Link code</label>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <strong style={{ fontSize: 18 }}>{`LINK ${linkCode}`}</strong>
+          <div className="lw-code-row">
+            <strong className="lw-code-text">{`LINK ${linkCode}`}</strong>
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(`LINK ${linkCode}`);
@@ -73,14 +74,14 @@ export default function LinkWizard(props: Props) {
             <button onClick={cancelLink}>Close</button>
           </div>
 
-          <div style={{ marginTop: 8 }}>
+          <div className="lw-expiry">
             <small>
               Expires:{" "}
               {linkExpiresAt ? new Date(linkExpiresAt).toLocaleString() : "-"}
             </small>
           </div>
 
-          <div style={{ marginTop: 8 }}>
+          <div className="lw-status">
             {linkStatus?.completed ? (
               <div>
                 <strong>Linked</strong>
@@ -93,7 +94,7 @@ export default function LinkWizard(props: Props) {
             ) : (
               <div>
                 Waiting for the user to send the code in the provider client...
-                <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <div className="lw-deep-row">
                   <button
                     onClick={() => {
                       setDeepLinkError(null);
@@ -127,11 +128,11 @@ export default function LinkWizard(props: Props) {
                     Open web
                   </button>
                   {deepLinkError && (
-                    <span style={{ fontSize: 12, color: "var(--red, #e53e3e)", alignSelf: "center" }}>
+                    <span className="lw-deep-error">
                       {deepLinkError}
                     </span>
                   )}
-                  <small style={{ alignSelf: "center", color: "#888" }}>
+                  <small className="lw-tip">
                     Tip: Mobile devices will open the provider app when
                     available.
                   </small>

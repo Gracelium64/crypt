@@ -1,9 +1,9 @@
 import { useState } from "react";
-
-type Conn = any;
+import type { Connection } from "../types";
+import "../styles/components/connections-panel.css";
 
 type Props = {
-  connections: Conn[];
+  connections: Connection[];
   connectionsBusy: boolean;
   loadConnectionsList: () => Promise<void>;
   deleteConnection: (id: string) => Promise<void>;
@@ -23,7 +23,8 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
     setConfirmUnlinkId(null);
     try {
       await deleteConnection(id);
-    } catch {
+    } catch (err) {
+      console.error("[ConnectionsPanel] deleteConnection failed:", err);
       setUnlinkError("Failed to unlink — please try again");
     }
   };
@@ -31,13 +32,13 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
   return (
     <>
       {unlinkError && (
-        <div style={{ color: "var(--red, #e53e3e)", fontSize: 13, padding: "4px 16px" }}>
+        <div className="conn-error">
           {unlinkError}
         </div>
       )}
       {connections.length === 0 ? (
         <div className="settings-row">
-          <span style={{ color: "var(--muted)", fontSize: 14 }}>
+          <span className="conn-empty-text">
             {connectionsBusy ? "Loading…" : "No provider connections yet."}
           </span>
         </div>
@@ -50,8 +51,8 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
               <span>{conn.provider} · {conn.providerChatId}</span>
             </div>
             {confirmUnlinkId === conn._id ? (
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <span style={{ fontSize: 13 }}>Unlink?</span>
+              <div className="conn-unlink-row">
+                <span className="conn-unlink-label">Unlink?</span>
                 <button
                   type="button"
                   className="btn-danger btn-sm"
@@ -81,7 +82,7 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
           </div>
         ))
       )}
-      <div className="settings-row" style={{ justifyContent: "center" }}>
+      <div className="settings-row conn-refresh-row">
         <button
           type="button"
           className="btn-ghost btn-sm"

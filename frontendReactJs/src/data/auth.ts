@@ -1,13 +1,13 @@
 import { apiJson, apiFetch } from "@/lib/api";
 import type { LoginPayload, RegisterPayload, User } from "@/types";
+import { UserSchema, TokenResponseSchema } from "@/schemas";
 
 const parseError = async (res: Response, fallback: string): Promise<string> => {
   try {
     const data = await res.json();
     return typeof data?.error === "string" ? data.error : fallback;
-  } catch {
-    return fallback;
-  }
+  } catch { /* non-fatal: resp.json() parse failure — return caller's fallback error string */ }
+  return fallback;
 };
 
 export const loginRequest = async (payload: LoginPayload): Promise<{ token: string }> => {
@@ -16,7 +16,7 @@ export const loginRequest = async (payload: LoginPayload): Promise<{ token: stri
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j.data as { token: string };
+  return TokenResponseSchema.parse(j.data);
 };
 
 export const registerRequest = async (payload: RegisterPayload): Promise<{ token: string }> => {
@@ -25,14 +25,14 @@ export const registerRequest = async (payload: RegisterPayload): Promise<{ token
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j.data as { token: string };
+  return TokenResponseSchema.parse(j.data);
 };
 
 export const meRequest = async (token: string): Promise<User> => {
   const resp = await apiFetch("/auth/me", {}, token);
   if (!resp.ok) throw new Error(await parseError(resp, "Session expired"));
   const j = await resp.json();
-  return j.data as User;
+  return UserSchema.parse(j.data);
 };
 
 export const logoutRequest = async (): Promise<void> => {

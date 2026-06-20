@@ -5,6 +5,7 @@ import {
   verifyPhoneCode,
   hasActiveClient,
   disconnectMTProtoSession,
+  resetOtherSessions,
   startQrLogin,
   getQrLoginStatus,
   resolveQr2fa,
@@ -34,8 +35,8 @@ export const requestCode: RequestHandler = async (req, res, next) => {
   const { phoneNumber } = req.body as RequestPhoneCodeBody;
   const accountId = req.account!.accountId;
   try {
-    await requestPhoneCode(accountId, phoneNumber);
-    res.json({ ok: true });
+    const { codeType } = await requestPhoneCode(accountId, phoneNumber);
+    res.json({ ok: true, codeType });
   } catch (err) {
     next(new Error((err as Error)?.message ?? "Failed to send code", { cause: { status: 500 } }));
   }
@@ -85,5 +86,15 @@ export const deleteTelegramSession: RequestHandler = async (req, res, next) => {
     res.json({ ok: true });
   } catch (error) {
     next(error);
+  }
+};
+
+export const resetTelegramSessions: RequestHandler = async (req, res, next) => {
+  const accountId = req.account!.accountId;
+  try {
+    const { cleared } = await resetOtherSessions(accountId);
+    res.json({ ok: true, cleared });
+  } catch (err) {
+    next(new Error((err as Error)?.message ?? "Failed to reset sessions", { cause: { status: 400 } }));
   }
 };

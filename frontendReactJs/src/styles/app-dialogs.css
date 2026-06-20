@@ -1,0 +1,135 @@
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  top: calc(var(--safe-t) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e3a52;
+  border: 1px solid rgba(46, 166, 255, 0.3);
+  color: var(--text);
+  padding: 10px 14px 10px 18px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  white-space: normal;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: all;
+}
+.toast-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* ── Toast text span ── */
+.toast-text {
+  flex: 1;
+}
+
+/* ── Nuke trigger button (header ☢️ / ⁈) ── */
+.nuke-trigger {
+  font-size: 18px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+/* ── Nuke account dialog ── */
+.nuke-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nuke-dialog {
+  background: var(--surface, #1a1a1a);
+  border: 2px solid #e53e3e;
+  border-radius: 14px;
+  padding: 32px 28px;
+  max-width: 320px;
+  width: 90%;
+  text-align: center;
+}
+
+.nuke-icon {
+  font-size: 52px;
+  line-height: 1;
+}
+
+.nuke-title {
+  color: #e53e3e;
+  margin: 14px 0 8px;
+  font-size: 20px;
+}
+
+.nuke-description {
+  color: var(--fg-muted, #888);
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+
+.nuke-countdown-label {
+  font-size: 13px;
+  color: var(--fg-muted, #aaa);
+  margin-bottom: 4px;
+}
+
+.nuke-count {
+  font-size: 72px;
+  font-weight: 700;
+  color: #e53e3e;
+  line-height: 1;
+  margin: 4px 0;
+}
+
+.nuke-seconds {
+  font-size: 12px;
+  color: var(--fg-muted, #888);
+  margin-bottom: 20px;
+}
+
+.nuke-progress-track {
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  height: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.nuke-progress-bar {
+  background: #e53e3e;
+  height: 4px;
+  transition: width 0.95s linear;
+  border-radius: 4px;
+}
+
+.nuke-cancel {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid var(--fg-muted, #666);
+  border-radius: 8px;
+  color: var(--fg, #eee);
+  font-size: 15px;
+  cursor: pointer;
+}

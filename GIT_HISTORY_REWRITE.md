@@ -27,7 +27,7 @@ This shows every commit where the count of that string changed (added or removed
 To see which files it's in:
 
 ```bash
-git log --all -p -S "THE_SENSITIVE_STRING" | grep "^diff\|THE_SENSITIVE_STRING"
+git log --all -p -S "THE_SENSITIVE_STRING" | grep "diff\|THE_SENSITIVE_STRING"
 ```
 
 To confirm it's gone from your current working tree:
@@ -157,6 +157,7 @@ If the data was genuinely sensitive (credentials, private keys, etc.), contact G
 ## What this does NOT cover
 
 - **Tags:** If you have tags pointing at affected commits, those tags now point at the old (unrewritten) SHAs and will show the old content. Delete and recreate them after the rewrite:
+
   ```bash
   git tag -d TAG_NAME
   git push origin :refs/tags/TAG_NAME

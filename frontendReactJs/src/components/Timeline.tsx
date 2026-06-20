@@ -1,14 +1,16 @@
 import type { FC } from "react";
 import { useEffect, useRef, useState } from "react";
+import "../styles/components/timeline.css";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage } from "../types";
 
 type Props = {
   messages: ChatMessage[];
-  privJwk: any | null;
+  privJwk: EcdhPrivateJwk | null;
   localOwnerId: string | null;
-  deriveAesGcmKey: (privJwkObj: any, otherPubB64: string) => Promise<CryptoKey>;
+  deriveAesGcmKey: (privJwkObj: EcdhPrivateJwk, otherPubB64: string) => Promise<CryptoKey>;
   counterpartName?: string | null;
 };
 
@@ -170,7 +172,7 @@ const Timeline: FC<Props> = ({
 
               <div className="message-foot">
                 <span>Delivery: {message.deliveryStatus ?? "unknown"}</span>
-                <span style={{ marginLeft: 12 }}>
+                <span className="message-security">
                   Security: {secure ? "secure" : "plain"}
                 </span>
               </div>
@@ -180,7 +182,7 @@ const Timeline: FC<Props> = ({
       )}
       {attachError && (
         <div
-          style={{ color: "var(--red, #e53e3e)", fontSize: 13, padding: "8px 12px", cursor: "pointer" }}
+          className="attach-error"
           onClick={() => setAttachError(null)}
           role="alert"
         >

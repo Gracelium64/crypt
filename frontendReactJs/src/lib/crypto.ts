@@ -1,3 +1,13 @@
+export interface EcdhPrivateJwk {
+  kty: "EC";
+  crv: "P-256";
+  x: string;
+  y: string;
+  d: string;
+  key_ops?: string[];
+  ext?: boolean;
+}
+
 export const secureMarker = "[CRYPT:v1]";
 
 export const isSecureCiphertext = (value: string) =>
@@ -49,7 +59,7 @@ export const importPublicKeyFromBase64 = async (b64: string) => {
   );
 };
 
-export const importPrivateJwkKey = async (jwk: any) =>
+export const importPrivateJwkKey = async (jwk: EcdhPrivateJwk) =>
   crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -58,7 +68,7 @@ export const importPrivateJwkKey = async (jwk: any) =>
     ["deriveKey", "deriveBits"],
   );
 
-export const deriveAesGcmKey = async (privJwkObj: any, otherPubB64: string) => {
+export const deriveAesGcmKey = async (privJwkObj: EcdhPrivateJwk, otherPubB64: string) => {
   const privKey = await importPrivateJwkKey(privJwkObj);
   const pubKey = await importPublicKeyFromBase64(otherPubB64);
   const sharedBits = await crypto.subtle.deriveBits(
@@ -91,7 +101,7 @@ export const deriveAesGcmKey = async (privJwkObj: any, otherPubB64: string) => {
 
 export const encryptForRecipient = async (
   plaintext: string,
-  privJwkObj: any,
+  privJwkObj: EcdhPrivateJwk,
   recipientPubB64: string,
 ) => {
   const aesKey = await deriveAesGcmKey(privJwkObj, recipientPubB64);
@@ -110,7 +120,7 @@ export const encryptForRecipient = async (
 
 export const decryptFromSender = async (
   secureText: string,
-  privJwkObj: any,
+  privJwkObj: EcdhPrivateJwk,
   senderPubB64: string,
 ) => {
   if (!secureText || !secureText.startsWith(secureMarker)) return null;
@@ -135,7 +145,7 @@ export const decryptFromSender = async (
 
 export const encryptFileForRecipient = async (
   file: File,
-  privJwkObj: any,
+  privJwkObj: EcdhPrivateJwk,
   recipientPubB64: string,
 ) => {
   const aesKey = await deriveAesGcmKey(privJwkObj, recipientPubB64);

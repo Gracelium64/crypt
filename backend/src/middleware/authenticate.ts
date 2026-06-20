@@ -14,7 +14,6 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as {
       accountId: string;
-      email: string;
       iat?: number;
       exp?: number;
     };

@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
-import { ProviderConnection, Key, Account } from "#models";
+import { ProviderConnection, Key } from "#models";
+import type { SearchContactQuery, ResolveContactQuery } from "#schemas";
 
 export const getConnections: RequestHandler = async (req, res, next) => {
   const accountId = req.account!.accountId;
@@ -12,13 +13,8 @@ export const getConnections: RequestHandler = async (req, res, next) => {
 };
 
 export const searchContact: RequestHandler = async (req, res, next) => {
-  const provider = String(req.query.provider || "");
-  const rawUsername = String(req.query.username || "").replace(/^@/, "").trim();
-
-  if (!provider || !rawUsername) {
-    next(new Error("Missing provider or username", { cause: { status: 400 } }));
-    return;
-  }
+  const { provider, username } = req.query as unknown as SearchContactQuery;
+  const rawUsername = username.replace(/^@/, "").trim();
 
   try {
     const escapedUsername = rawUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,11 +36,8 @@ export const searchContact: RequestHandler = async (req, res, next) => {
     }
 
     let keyRecord = await Key.findOne({ ownerId: conn.providerChatId }).lean();
-    if (!keyRecord) {
-      const account = await Account.findById(conn.accountId).lean();
-      if (account?.email) {
-        keyRecord = await Key.findOne({ ownerId: account.email }).lean();
-      }
+    if (!keyRecord && conn.accountId) {
+      keyRecord = await Key.findOne({ ownerId: conn.accountId.toString() }).lean();
     }
 
     res.status(200).json({
@@ -63,17 +56,11 @@ export const searchContact: RequestHandler = async (req, res, next) => {
 };
 
 export const resolveContact: RequestHandler = async (req, res, next) => {
-  const provider = String(req.query.provider || "");
-  const chatId = String(req.query.chatId || "");
-
-  if (!provider || !chatId) {
-    next(new Error("Missing provider or chatId", { cause: { status: 400 } }));
-    return;
-  }
+  const { provider, chatId } = req.query as unknown as ResolveContactQuery;
 
   try {
     const conn = await ProviderConnection.findOne({
-      provider: provider as "telegram" | "whatsapp",
+      provider,
       providerChatId: chatId,
     }).lean();
 
@@ -82,10 +69,9 @@ export const resolveContact: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const account = await Account.findById(conn.accountId).lean();
     res.status(200).json({
       ok: true,
-      data: { accountId: conn.accountId, email: account?.email ?? null },
+      data: { accountId: conn.accountId ?? null },
     });
   } catch (error) {
     next(error);
@@ -102,6 +88,7 @@ export const deleteConnection: RequestHandler = async (req, res, next) => {
       next(new Error("Connection not found", { cause: { status: 404 } }));
       return;
     }
+
     if (!conn.accountId || conn.accountId.toString() !== accountId) {
       next(new Error("Forbidden", { cause: { status: 403 } }));
       return;

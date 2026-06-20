@@ -1,21 +1,7 @@
 import type { RequestHandler } from "express";
 import { Message, ProviderConnection, Account } from "#models";
 import { isMarkedCiphertext, broadcastMessage, sendToProvider, hasActiveClient, sendViaMTProto } from "#services";
-import type { SendMessageBody, MessagesQuery, ConversationsQuery } from "#schemas";
-
-type ConversationSummary = {
-  provider: "telegram" | "whatsapp";
-  chatId: string;
-  counterpart: string;
-  counterpartName: string;
-  messageCount: number;
-  secureMessageCount: number;
-  plainMessageCount: number;
-  lastMessageAt: string;
-  lastDirection: "inbound" | "outbound";
-  lastMessagePreview: string;
-  securityState: "secure" | "plain" | "mixed";
-};
+import type { SendMessageBody, MessagesQuery, ConversationsQuery, ConversationSummary, DeleteConversationQuery, DeleteAllMessagesQuery } from "#schemas";
 
 const previewMessage = (message: {
   encryptedText?: string | null;
@@ -32,15 +18,7 @@ const isSecureMessage = (message: { encryptedText?: string | null }) =>
   isMarkedCiphertext(message.encryptedText ?? "");
 
 export const getMessages: RequestHandler = async (req, res, next) => {
-  const parsed = (req as any).validatedQuery as MessagesQuery | undefined;
-  const query_raw = parsed ?? req.query;
-
-  // Inline query validation fallback
-  const since = query_raw.since as string | undefined;
-  const provider = query_raw.provider as string | undefined;
-  const chatId = query_raw.chatId as string | undefined;
-  const limit = Number(query_raw.limit) || 40;
-
+  const { since, provider, chatId, limit } = req.query as unknown as MessagesQuery;
   const accountId = req.account!.accountId;
   const query: Record<string, unknown> = { accountId };
   if (provider) query.provider = provider;
@@ -60,8 +38,7 @@ export const getMessages: RequestHandler = async (req, res, next) => {
 };
 
 export const getConversations: RequestHandler = async (req, res, next) => {
-  const provider = req.query.provider as string | undefined;
-  const limit = Math.min(Number(req.query.limit) || 200, 200);
+  const { provider, limit } = req.query as unknown as ConversationsQuery;
   const accountId = req.account!.accountId;
 
   const query: Record<string, unknown> = { accountId };
@@ -283,17 +260,10 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
 };
 
 export const deleteConversation: RequestHandler = async (req, res, next) => {
-  const provider = String(req.query.provider || "");
-  const chatId = String(req.query.chatId || "");
-
-  if (!provider || !chatId) {
-    next(new Error("Missing provider or chatId", { cause: { status: 400 } }));
-    return;
-  }
-
+  const { provider, chatId } = req.query as unknown as DeleteConversationQuery;
   const accountId = req.account!.accountId;
   try {
-    const result = await Message.deleteMany({ accountId, provider: provider as "telegram" | "whatsapp", chatId });
+    const result = await Message.deleteMany({ accountId, provider, chatId });
     res.json({ ok: true, deleted: result.deletedCount });
   } catch (error) {
     next(error);
@@ -301,7 +271,7 @@ export const deleteConversation: RequestHandler = async (req, res, next) => {
 };
 
 export const deleteAllMessages: RequestHandler = async (req, res, next) => {
-  const provider = String(req.query.provider || "");
+  const { provider } = req.query as unknown as DeleteAllMessagesQuery;
   const accountId = req.account!.accountId;
   const query: Record<string, unknown> = { accountId };
   if (provider) query.provider = provider;

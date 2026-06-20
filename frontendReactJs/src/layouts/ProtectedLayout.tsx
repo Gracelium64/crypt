@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useAuth } from "@/context";
 import AuthPage from "@/pages/AuthPage";
+import "../styles/global.css";
 
 type Props = {
   children: ReactNode;
@@ -11,8 +12,8 @@ export default function ProtectedLayout({ children }: Props) {
 
   if (checkSession) {
     return (
-      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ color: "var(--muted)" }}>Loading…</span>
+      <div className="app-shell app-shell--centered">
+        <span className="loading-text">Loading…</span>
       </div>
     );
   }

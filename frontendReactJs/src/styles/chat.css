@@ -1,0 +1,252 @@
+/* Provider pills in header */
+.provider-pills {
+  display: flex;
+  gap: 6px;
+}
+.provider-pill {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+.provider-pill.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Conversation list ── */
+.conv-list {
+  display: flex;
+  flex-direction: column;
+}
+.conv-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text);
+  text-align: left;
+  transition: background 120ms;
+  width: 100%;
+}
+.conv-item:active, .conv-item.active {
+  background: var(--surface2);
+}
+.conv-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e3a52, #0f2435);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.conv-body { flex: 1; min-width: 0; }
+.conv-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.conv-name {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conv-time { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.conv-preview {
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.conv-badge.secure { background: var(--green-dim); color: var(--green); }
+.conv-badge.plain  { background: var(--surface2);  color: var(--muted); }
+.conv-badge.mixed  { background: rgba(245,158,11,0.15); color: var(--warn); }
+
+/* ── Conv row (preview + badge) ── */
+.conv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Empty state ── */
+.empty-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.empty-screen .empty-icon { font-size: 48px; opacity: 0.5; }
+.empty-screen h3 { font-size: 17px; font-weight: 600; color: var(--text-dim); }
+.empty-screen p  { font-size: 14px; line-height: 1.5; }
+.empty-screen button { margin-top: 8px; }
+
+/* ── Composer ── */
+.composer {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  padding-bottom: calc(10px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.composer-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 10px 16px;
+  font-size: 15px;
+  color: var(--text);
+  font: inherit;
+  resize: none;
+  max-height: 120px;
+  outline: none;
+  transition: border-color 150ms;
+}
+.composer-input:focus { border-color: var(--accent); }
+.composer-send {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.composer-send:disabled { opacity: 0.4; }
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.composer-mode {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mode-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+.mode-btn.active { background: var(--accent); color: #fff; }
+.composer-attach {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+/* ── Attach label (cursor pointer override) ── */
+.cv-attach-label {
+  cursor: pointer;
+}
+
+/* ── Hidden file input ── */
+.cv-file-hidden {
+  display: none;
+}
+
+/* ── Delete confirm row in ChatView header ── */
+.cv-delete-confirm-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cv-delete-confirm-label {
+  font-size: 13px;
+}
+
+/* ── Delete trigger button ── */
+.cv-delete-trigger {
+  font-size: 16px;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.file-preview img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.file-preview span { flex: 1; font-size: 13px; color: var(--text-dim); }
+.file-preview .btn-danger { padding: 4px 10px; font-size: 12px; }

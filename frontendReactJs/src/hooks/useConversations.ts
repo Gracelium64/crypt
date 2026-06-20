@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
+import { z } from "zod";
 import { apiFetch } from "../lib/api";
 import { isSecureCiphertext, decryptFromSender } from "../lib/crypto";
+import type { EcdhPrivateJwk } from "../lib/crypto";
 import type { ChatMessage, ConversationSummary } from "../types";
+import { ChatMessageSchema, ConversationSummarySchema, EcdhPrivateJwkSchema } from "../schemas";
 
 export default function useConversations(token?: string | null) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -17,7 +20,9 @@ export default function useConversations(token?: string | null) {
       );
       if (!resp.ok) throw new Error("Could not load conversations");
       const payload = await resp.json();
-      setConversations((payload.data ?? []) as ConversationSummary[]);
+      const parsed = z.array(ConversationSummarySchema).safeParse(payload.data ?? []);
+      if (parsed.success) setConversations(parsed.data);
+      else console.error("[Conversations] response shape mismatch:", parsed.error);
     } catch (_err) {
       console.error("loadConversations error", _err);
     }
@@ -28,7 +33,7 @@ export default function useConversations(token?: string | null) {
       currentProvider: string,
       currentChatId: string,
       since?: string,
-      privJwk?: any | null,
+      privJwk?: EcdhPrivateJwk | null,
       localOwnerId?: string | null,
     ) => {
       try {
@@ -48,16 +53,19 @@ export default function useConversations(token?: string | null) {
         const resp = await apiFetch(`/messages?${params.toString()}`, {}, token);
         if (!resp.ok) throw new Error("Could not load messages");
         const payload = await resp.json();
-        const incoming = (payload.data ?? []) as ChatMessage[];
+        const parseResult = z.array(ChatMessageSchema).safeParse(payload.data ?? []);
+        if (!parseResult.success) {
+          console.error("[Messages] response shape mismatch:", parseResult.error);
+          return;
+        }
+        const incoming = parseResult.data;
 
         // Attempt best-effort decryption per message when a private key is available
-        const priv =
-          privJwk ??
-          (localOwnerId
-            ? JSON.parse(
-                localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-              )
-            : null);
+        const storedRaw = localOwnerId
+          ? (() => { try { return JSON.parse(localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null"); } catch { /* non-fatal: corrupted localStorage key */ return null; } })()
+          : null;
+        const storedJwk = storedRaw ? EcdhPrivateJwkSchema.safeParse(storedRaw) : null;
+        const priv: EcdhPrivateJwk | null = privJwk ?? (storedJwk?.success ? storedJwk.data : null);
 
         if (priv) {
           for (const item of incoming) {
@@ -70,6 +78,8 @@ export default function useConversations(token?: string | null) {
 
               const kresp = await apiFetch(
                 `/keys/${encodeURIComponent(ownerId)}`,
+                {},
+                token,
               );
               if (!kresp.ok) continue;
               const kjson = await kresp.json();
@@ -78,9 +88,7 @@ export default function useConversations(token?: string | null) {
 
               const plain = await decryptFromSender(ct, priv, theirPub);
               if (plain) item.decryptedText = plain;
-            } catch {
-              /* ignore per-message decrypt failures */
-            }
+            } catch { /* ignore per-message decrypt failures — message still rendered encrypted */ }
           }
         }
 
@@ -96,25 +104,25 @@ export default function useConversations(token?: string | null) {
   const handleIncomingMessage = useCallback(
     async (
       message: ChatMessage,
-      privJwk?: any | null,
+      privJwk?: EcdhPrivateJwk | null,
       localOwnerId?: string | null,
     ) => {
       try {
         const ct = message.encryptedText ?? "";
         if (isSecureCiphertext(ct)) {
-          const priv =
-            privJwk ??
-            (localOwnerId
-              ? JSON.parse(
-                  localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null",
-                )
-              : null);
+          const incomingRaw = localOwnerId
+            ? (() => { try { return JSON.parse(localStorage.getItem(`crypt:priv:${localOwnerId}`) || "null"); } catch { /* non-fatal: corrupted localStorage key */ return null; } })()
+            : null;
+          const incomingJwk = incomingRaw ? EcdhPrivateJwkSchema.safeParse(incomingRaw) : null;
+          const priv: EcdhPrivateJwk | null = privJwk ?? (incomingJwk?.success ? incomingJwk.data : null);
           if (priv) {
             const ownerId =
               message.direction === "inbound" ? message.from : message.to;
             if (ownerId) {
               const kresp = await apiFetch(
                 `/keys/${encodeURIComponent(ownerId)}`,
+                {},
+                token,
               );
               if (kresp.ok) {
                 const kjson = await kresp.json();
@@ -127,9 +135,7 @@ export default function useConversations(token?: string | null) {
             }
           }
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore per-realtime-message decrypt failure — message still rendered encrypted */ }
 
       setMessages((current) => [...current, message]);
       setLastSync(message.createdAt);

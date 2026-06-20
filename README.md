@@ -1,5 +1,24 @@
 # Crypt Companion
 
+## This project was conducted as a AI Assisted Development project for a WBS bootcamp.
+
+Meaning, conclusions, and plans to expand on this:
+
+- The project was planned and orchestrated by Grace
+- Execution was done mostly with AI Coding Agent
+- Main take from this process is that although speed for producing a working prototype was highly improved, some of the intensive code review is still pending completion for after the project's deadline (the review is ongoing and issues are being noted)
+- Some of the fun and creativity of coding is lost in the process of AI Assisted Development
+- In addition to the code review, understanding of project elements that were not taught during the bootcamp is underway
+- As a teaching exercise this project will be rebuilt to a React Native app in a process of self learning to bridge the knowledge gap from ReactJS to React Native
+- All the prompt engineering in the world can't stop an AI agent from completely ignoring instructions occasionally, everything needs to be verified several times over
+- Copilot vs. Claude: Copilot “instinctively” avoids exposing secrets, while Claude needs extremely specific rules that specify all the ways it could expose secrets and to forbid it from doing that
+- Coding gaps: Copilot leaves a lot more gaps and drifts away from references of practices and file structure
+- Both lie and assume even when instructed to never assume and ask for clarifications and/or admit knowledge gaps when implementing a feature
+- Claude seems to be better in meta-prompting
+- Both Copilot and Claude tend to report completion of tasks out of memory's itent to do so rather than verifying what was actually done - even when prompted not to do that
+
+#
+
 MVP demo stack:
 
 - Backend: Node.js + TypeScript + Express + MongoDB + Socket.IO
@@ -11,7 +30,10 @@ MVP demo stack:
 - `frontendReactJs/`: web companion app UI
 - `frontendReactNative/`: phase 2 placeholder
 - `frontendFlutter/`: phase 2 placeholder
-- `docs/`: maintainer and learner guides
+- `docs/`: maintainer and learner guides + `PRODUCTION_CHECKLIST.md`, `SCALABILITY.md`
+- `planning/`: `PROJECT_ROADMAP.md`, `LESSON_PLAN.md`, `REBUILD_EXERCISES.md`, `DEADLINE220626.md`
+- `REFACTOR/`: refactor history — `AUDIT_CHANGELOG.md`, `PASS1/`, `PASS2/`
+- `CRYPT_SPECS.md`: full technical spec (stack, routes, encryption, env vars)
 
 ## Quick Start
 
@@ -19,7 +41,7 @@ MVP demo stack:
 
 ```bash
 cd backend
-cp .env.example .env
+cp env.example .env
 npm install
 npm run dev
 ```
@@ -44,16 +66,18 @@ If needed, set `VITE_API_BASE_URL` in frontend to point to deployed backend.
 Copy the example env into the backend folder before starting the server:
 
 ```bash
-cp .env.example backend/.env
+cp backend/env.example backend/.env
 ```
 
 Key variables in `backend/.env`:
 
 - `MONGODB_URI` — MongoDB connection string (required)
-- `DEMO_ENCRYPTION_KEY` — local master key for encrypting provider secrets (min 32 chars)
+- `JWT_SECRET` — required JWT signing secret, min 32 chars (`openssl rand -hex 32`)
+- `DEMO_ENCRYPTION_KEY` — required, min 32 chars (encrypts Telegram session strings at rest; also available as a general server-side AES helper — see `CRYPT_SPECS.md`)
 - `CORS_ORIGIN` — origin for frontend during development (default `http://localhost:5173`)
-- `JWT_SECRET` — optional JWT signing secret for auth flows
-- `SE_CRETS_MASTER_KEY` — optional real master key for AES-GCM secret encryption
+- `SE_CRETS_MASTER_KEY` — optional real master key for AES-GCM secret encryption (currently no callers; reserved for a future secrets vault feature)
+
+Full variable list with required/optional status: `CRYPT_SPECS.md`.
 
 Frontend override (optional):
 
@@ -104,8 +128,9 @@ curl -s http://localhost:4000/health | jq
 - Signup & login (returns JWT):
 
 ```bash
-curl -s -X POST http://localhost:4000/api/auth/signup -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password"}' | jq
-curl -s -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password"}' | jq
+# password: 8–24 chars; displayName is optional
+curl -s -X POST http://localhost:4000/api/auth/signup -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password1","displayName":"Alice"}' | jq
+curl -s -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"password1"}' | jq
 ```
 
 - Generate keypair (frontend Key Manager) and `Register Public Key` (or POST `/api/keys/register` with `Authorization: Bearer <token>`)
@@ -133,3 +158,6 @@ Implemented now:
 - Ghost-connection guard: ProviderConnection accountId is verified against the accounts collection before fan-out to prevent deleted accounts intercepting messages
 - Key fallback resolution: `getKey` resolves via ProviderConnection → Account → email if a direct lookup misses
 - Deployed to Render (backend Web Service + frontend Static Site)
+- Rate limiting on auth and link/contact-lookup endpoints (`express-rate-limit`)
+- Login lockout after 8 consecutive failed attempts (15-minute lockout)
+- Upload validation: 10MB size cap and a MIME allow-list on plain (unencrypted) attachments — encrypted attachments are exempt since they're ciphertext, not a real file type

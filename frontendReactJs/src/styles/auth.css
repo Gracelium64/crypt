@@ -1,0 +1,115 @@
+/* ── Auth form ── */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px;
+}
+.auth-form label { font-size: 13px; color: var(--muted); }
+.auth-form .auth-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.auth-form .auth-actions button { flex: 1; }
+
+/* ── AuthPage layout ── */
+.auth-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px 16px;
+}
+
+.auth-title {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.auth-tab-bar {
+  display: flex;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.auth-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted, #888);
+  padding: 8px 0;
+  cursor: pointer;
+  font-weight: 400;
+  margin-bottom: -1px;
+}
+
+.auth-tab.active {
+  border-bottom: 2px solid var(--accent, #fff);
+  color: var(--text, #fff);
+  font-weight: 600;
+}
+
+.auth-error {
+  color: var(--red, #f55);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.auth-field {
+  margin-bottom: 12px;
+}
+
+.auth-field-pw {
+  margin-bottom: 20px;
+}
+
+.auth-forgot-row {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.auth-forgot-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+}
+
+.auth-forgot-hint {
+  margin-top: 6px;
+  color: var(--text-muted, #888);
+  font-style: italic;
+}
+
+.auth-field-error {
+  color: var(--red, #f55);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.auth-help-btn {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: none;
+  border: 1px solid var(--border, rgba(255,255,255,0.07));
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-dim, #94aac4);
+  font-size: 18px;
+  line-height: 1;
+}

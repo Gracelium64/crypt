@@ -1,0 +1,110 @@
+/* ── Find contact ── */
+.find-screen { padding: 16px 12px; }
+.find-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.find-search input { flex: 1; }
+.find-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.find-result-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.find-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 1px solid rgba(46,166,255,0.2);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.find-result-name { flex: 1; min-width: 0; }
+.find-result-name strong { display: block; font-size: 16px; }
+.find-result-name span   { display: block; font-size: 13px; color: var(--muted); }
+.find-result-body { padding: 0 16px 14px; }
+.find-error { color: var(--danger); font-size: 14px; margin-top: 8px; }
+
+/* ── FindContact inline style extractions ── */
+.fc-provider-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fc-provider-btn {
+  flex: 1;
+}
+
+.fc-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.fc-search-input {
+  flex: 1;
+}
+
+.fc-error {
+  margin-top: 8px;
+  color: #c0392b;
+}
+
+.fc-result {
+  margin-top: 12px;
+}
+
+.fc-result-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.fc-result-display {
+  color: #666;
+  font-size: 13px;
+}
+
+.fc-result-chatid {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.fc-key-info {
+  margin-top: 8px;
+}
+
+.fc-fingerprint-label {
+  font-size: 12px;
+  color: #555;
+}
+
+.fc-fingerprint-mono {
+  font-family: monospace;
+}
+
+.fc-e2e-available {
+  font-size: 11px;
+  color: #27ae60;
+  margin-top: 2px;
+}
+
+.fc-no-key {
+  font-size: 12px;
+  color: #e67e22;
+  margin-top: 6px;
+}
+
+.fc-start-btn {
+  margin-top: 10px;
+}

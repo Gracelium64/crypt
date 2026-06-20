@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, validateBody } from "#middleware";
+import { authenticate, authorize, validateBody, validateQuery } from "#middleware";
 import {
   getMessages,
   getConversations,
@@ -7,12 +7,18 @@ import {
   deleteConversation,
   deleteAllMessages,
 } from "#controllers";
-import { sendMessageSchema } from "#schemas";
+import {
+  sendMessageSchema,
+  messagesQuerySchema,
+  conversationsQuerySchema,
+  deleteConversationQuerySchema,
+  deleteAllMessagesQuerySchema,
+} from "#schemas";
 
 export const messagesRouter = Router();
 
-messagesRouter.get("/messages", authenticate, getMessages);
-messagesRouter.get("/conversations", authenticate, getConversations);
-messagesRouter.post("/messages/send", authenticate, validateBody(sendMessageSchema), sendMessage);
-messagesRouter.delete("/messages/conversation", authenticate, deleteConversation);
-messagesRouter.delete("/messages/all", authenticate, deleteAllMessages);
+messagesRouter.get("/messages", authenticate, authorize(), validateQuery(messagesQuerySchema), getMessages);
+messagesRouter.get("/conversations", authenticate, authorize(), validateQuery(conversationsQuerySchema), getConversations);
+messagesRouter.post("/messages/send", authenticate, authorize(), validateBody(sendMessageSchema), sendMessage);
+messagesRouter.delete("/messages/conversation", authenticate, authorize(), validateQuery(deleteConversationQuerySchema), deleteConversation);
+messagesRouter.delete("/messages/all", authenticate, authorize(), validateQuery(deleteAllMessagesQuerySchema), deleteAllMessages);

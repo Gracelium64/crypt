@@ -8,3 +8,4 @@ export { default as linkRouter } from "./link.route.js";
 export { default as providerConnectionsRouter } from "./providerConnections.route.js";
 export { default as swaggerRouter } from "./swagger.route.js";
 export { default as telegramRouter } from "./telegram.route.js";
+export { default as honeypotRouter } from "./honeypot.route.js";

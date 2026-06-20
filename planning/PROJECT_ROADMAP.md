@@ -1,5 +1,15 @@
 # Crypt Companion Project Roadmap
 
+> **Current project status (as of 2026-06-20):**
+> The app is feature-complete and deployed on Render. All Stage 6 items below that are ✅ were implemented
+> during the project; items marked 🔜 are planned post-deadline.
+> **Refactor history:**
+> - Pass 1 (2026-06-20): auth/JWT hardening, Zod schemas, Socket.IO per-account rooms, email removal from JWT, and gap fixes
+> - Pass 2 (2026-06-20): CSS architecture refactor (App.css → 13 scoped component files, 122 inline styles extracted)
+> - Pass 2 Correction (2026-06-20): full security audit + remediation — `authorize()` on all 21 owner-only routes, `requireAdmin` on `/provider/resolve`, rate limiters on Telegram action routes and `/provider/link/init`, Swagger gated in production, Helmet added
+>
+> This document remains useful as a learning roadmap — read stages 1-5 to understand the architecture.
+
 ## 1. Project Overview
 
 **Crypt Companion** is a demo messaging app with:
@@ -106,11 +116,11 @@ This repo contains:
 
 ### Stage 6: Extend the project
 
-1. Replace placeholder provider adapters with real Telegram/WhatsApp outbound logic.
-2. Add authentication and authorization middleware.
-3. Add more robust conversation grouping and filtering.
-4. Add test coverage for backend routes and frontend components.
-5. Build a production-ready static frontend deployment.
+1. ✅ Replace placeholder provider adapters with real Telegram/WhatsApp outbound logic (Telegram MTProto + Bot API + WhatsApp Cloud API all live)
+2. ✅ Add authentication and authorization middleware — JWT `authenticate` on all protected routes (Pass 1); router-level `authorize()` on all 21 owner-only routes (Pass 2 Correction); login lockout; rate limiting; Helmet HTTP headers
+3. 🔜 Add more robust conversation grouping and filtering
+4. 🔜 Add test coverage for backend routes and frontend components
+5. ✅ Build a production-ready static frontend deployment (deployed on Render as Static Site)
 
 ## 3. File Structure Guide
 
