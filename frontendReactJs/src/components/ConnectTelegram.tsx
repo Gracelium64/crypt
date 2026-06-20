@@ -305,7 +305,6 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                   onChange={(e) => setPhone(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") void requestCode(); }}
                   disabled={busy}
-                  autoFocus
                 />
                 <button type="button" onClick={requestCode} disabled={busy || !phone.trim()}>
                   {busy ? "Sending…" : "Continue"}
@@ -336,7 +335,6 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                 onChange={(e) => setCode(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && step !== "2fa") void verifyCode(); }}
                 disabled={busy}
-                autoFocus
               />
               {step === "2fa" && (
                 <input

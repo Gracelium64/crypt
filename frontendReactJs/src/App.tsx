@@ -238,12 +238,16 @@ function AppContent() {
 
   useEffect(() => {
     void loadMessages(provider, selectedChatId);
-  }, [provider, selectedChatId]);
+  }, [provider, selectedChatId, loadMessages]);
 
-  // Re-decrypt messages when private key becomes available
+  // Re-decrypt messages that arrived before the private key was ready
   useEffect(() => {
     if (!privJwk || !localOwnerId || convHook.messages.length === 0) return;
     const reDecrypt = async () => {
+      const toDecrypt = convHook.messages.filter(
+        (msg) => !msg.decryptedText && isSecureCiphertext(msg.encryptedText ?? ""),
+      );
+      if (toDecrypt.length === 0) return;
       const updated = await Promise.all(
         convHook.messages.map(async (msg) => {
           if (msg.decryptedText) return msg;
@@ -266,7 +270,7 @@ function AppContent() {
       convHook.setMessages(updated);
     };
     void reDecrypt();
-  }, [privJwk, auth.token]);
+  }, [privJwk, auth.token, convHook.messages]);
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
