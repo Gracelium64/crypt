@@ -1,3 +1,5 @@
+import "../styles/components/onboarding.css";
+
 type Props = {
   onClose: () => void;
 };
@@ -36,75 +38,22 @@ const steps: { title: string; body: string }[] = [
 export default function OnboardingModal({ onClose }: Props) {
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1100,
-        background: "rgba(0,0,0,0.7)",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-      }}
+      className="ob-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        style={{
-          background: "var(--surface, #111827)",
-          border: "1px solid var(--border, rgba(255,255,255,0.07))",
-          borderRadius: "18px 18px 0 0",
-          width: "100%",
-          maxWidth: 480,
-          maxHeight: "88vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
+      <div className="ob-sheet">
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "18px 20px 14px",
-            borderBottom: "1px solid var(--border, rgba(255,255,255,0.07))",
-            flexShrink: 0,
-          }}
-        >
+        <div className="ob-header">
           <div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: "var(--text, #e2eaf6)",
-              }}
-            >
-              How Crypt works
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text-dim, #94aac4)",
-                marginTop: 2,
-              }}
-            >
-              End-to-end encrypted messaging
-            </div>
+            <div className="ob-title">How Crypt works</div>
+            <div className="ob-subtitle">End-to-end encrypted messaging</div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-dim, #94aac4)",
-              fontSize: 22,
-              cursor: "pointer",
-              lineHeight: 1,
-              padding: "4px 6px",
-            }}
+            className="ob-close"
             aria-label="Close"
           >
             ✕
@@ -112,38 +61,11 @@ export default function OnboardingModal({ onClose }: Props) {
         </div>
 
         {/* Scrollable content */}
-        <div style={{ overflowY: "auto", padding: "16px 20px 32px", flex: 1 }}>
+        <div className="ob-scroll">
           {steps.map((step) => (
-            <div
-              key={step.title}
-              style={{
-                marginBottom: 20,
-                background: "var(--surface2, #1a2337)",
-                border: "1px solid var(--border, rgba(255,255,255,0.07))",
-                borderRadius: 12,
-                padding: "14px 16px",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--accent, #2ea6ff)",
-                  marginBottom: 6,
-                  letterSpacing: 0.2,
-                }}
-              >
-                {step.title}
-              </div>
-              <div
-                style={{
-                  fontSize: 14,
-                  color: "var(--text-dim, #94aac4)",
-                  lineHeight: 1.55,
-                }}
-              >
-                {step.body}
-              </div>
+            <div key={step.title} className="ob-step">
+              <div className="ob-step-title">{step.title}</div>
+              <div className="ob-step-body">{step.body}</div>
             </div>
           ))}
         </div>

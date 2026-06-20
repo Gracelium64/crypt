@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import Timeline from "@/components/Timeline";
+import "../styles/chat.css";
 import { deriveAesGcmKey } from "@/lib/crypto";
 import type { EcdhPrivateJwk } from "@/lib/crypto";
 import type { ChatMessage, ConversationSummary, Provider } from "@/types";
@@ -72,8 +73,8 @@ export default function ChatView({
         </div>
         <span className={`header-status${isRealtime ? " live" : ""}`} title={isRealtime ? "Live" : "Polling"} />
         {confirmingDelete ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 13 }}>Delete?</span>
+          <div className="cv-delete-confirm-row">
+            <span className="cv-delete-confirm-label">Delete?</span>
             <button
               className="btn-sm btn-danger"
               type="button"
@@ -91,11 +92,10 @@ export default function ChatView({
           </div>
         ) : (
           <button
-            className="header-action btn-danger"
+            className="header-action btn-danger cv-delete-trigger"
             type="button"
             title="Delete conversation"
             onClick={() => setConfirmingDelete(true)}
-            style={{ fontSize: 16 }}
           >
             🗑
           </button>
@@ -142,13 +142,13 @@ export default function ChatView({
           )}
 
           <div className="composer-row">
-            <label className="composer-attach" style={{ cursor: "pointer" }} title="Attach image">
+            <label className="composer-attach cv-attach-label" title="Attach image">
               📎
               <input
                 type="file"
                 ref={fileInputRef}
                 accept="image/*"
-                style={{ display: "none" }}
+                className="cv-file-hidden"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 disabled={!selectedChatId}
               />

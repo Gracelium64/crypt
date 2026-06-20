@@ -1,0 +1,76 @@
+/* ── Settings screen ── */
+.settings-screen { padding: 0 0 16px; }
+.settings-section {
+  margin: 16px 12px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding: 14px 16px 8px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-row:first-of-type { border-top: none; }
+.settings-row-label { flex: 1; min-width: 0; }
+.settings-row-label strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+.settings-row-label span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-row-value {
+  font-size: 14px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.check-done  { color: var(--green); font-size: 18px; }
+.check-todo  { color: var(--warn);  font-size: 18px; }
+
+/* ── SettingsPage section padding helpers ── */
+.sp-key-section {
+  padding: 0 16px 12px;
+}
+
+.sp-tg-desc {
+  padding: 0 16px 4px;
+  font-size: 13px;
+  color: var(--text-dim, #94aac4);
+  line-height: 1.5;
+}
+
+.sp-tg-body {
+  padding: 4px 16px 12px;
+}
+
+.sp-wa-body {
+  padding: 4px 16px 12px;
+}
+
+.sp-toast-on {
+  color: var(--green);
+}
+
+.sp-spacer {
+  height: 24px;
+}

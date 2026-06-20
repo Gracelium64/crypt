@@ -1,4 +1,5 @@
 import useLink from "@/hooks/useLink";
+import "../styles/components/connect-whatsapp.css";
 
 interface Props {
   token?: string | null;
@@ -29,9 +30,9 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
 
   if (linkCode) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <strong style={{ fontSize: 18 }}>{`LINK ${linkCode}`}</strong>
+      <div className="cwa-link-container">
+        <div className="cwa-code-row">
+          <strong className="cwa-code-text">{`LINK ${linkCode}`}</strong>
           <button
             type="button"
             className="btn-sm"
@@ -43,17 +44,17 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
             Cancel
           </button>
         </div>
-        <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+        <div className="cwa-hint">
           Send this code in WhatsApp to the business number to link your account.
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="cwa-deep-actions">
           {linkDeepWeb && (
             <button type="button" className="btn-ghost btn-sm" onClick={() => window.open(linkDeepWeb!, "_blank")}>
               Open WhatsApp
             </button>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+        <div className="cwa-hint">
           Waiting for you to send the code…
         </div>
       </div>
@@ -61,7 +62,7 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="cwa-container">
       <button
         type="button"
         onClick={() => void startLink("whatsapp")}
@@ -69,7 +70,7 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
       >
         {linkBusy ? "Generating…" : "Generate link code"}
       </button>
-      <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+      <div className="cwa-hint">
         Generates a code you send to the WhatsApp business number to link your account.
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
+import "../styles/components/connect-telegram.css";
 import { apiFetch, apiJson } from "../lib/api";
 import useLink from "@/hooks/useLink";
 import { QrStatusSchema } from "@/schemas";
@@ -221,11 +222,11 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
           <strong>{status.phoneNumber ?? "Connected"}</strong>
           <span>Telegram connected — messages send directly</span>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="ctg-connected-actions">
           <span className="chip green">Active</span>
           {disconnectConfirm ? (
             <>
-              <span style={{ fontSize: 13 }}>Disconnect?</span>
+              <span className="ctg-disconnect-label">Disconnect?</span>
               <button className="btn-sm btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>Yes</button>
               <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(false)}>Cancel</button>
             </>
@@ -240,9 +241,9 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="ctg-container">
       {/* Mode tabs */}
-      <div style={{ display: "flex", gap: 6 }}>
+      <div className="ctg-mode-tabs">
         {(["phone", "qr", "bot"] as Mode[]).map((m) => (
           <button
             key={m}
@@ -258,13 +259,13 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       {/* ── Phone code ── */}
       {mode === "phone" && (
         <>
-          {error && <div style={{ color: "var(--red, #e53e3e)", fontSize: 13 }}>{error}</div>}
+          {error && <div className="ctg-error">{error}</div>}
 
           {step === "idle" && (
             <>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="ctg-phone-row">
                 <input
-                  style={{ flex: 1 }}
+                  className="ctg-phone-input"
                   type="tel"
                   placeholder="+1234567890"
                   value={phone}
@@ -277,7 +278,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                   {busy ? "Sending…" : "Continue"}
                 </button>
               </div>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+              <div className="ctg-hint">
                 A code will appear as a message from "Telegram" in your Telegram app (not SMS).
               </div>
             </>
@@ -305,7 +306,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                   disabled={busy}
                 />
               )}
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="ctg-action-row">
                 <button type="button" onClick={verifyCode} disabled={busy || !code.trim()}>
                   {busy ? "Verifying…" : "Confirm"}
                 </button>
@@ -322,26 +323,26 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       {/* ── QR code ── */}
       {mode === "qr" && (
         <>
-          {qrError && <div style={{ color: "var(--red, #e53e3e)", fontSize: 13 }}>{qrError}</div>}
+          {qrError && <div className="ctg-error">{qrError}</div>}
 
           {qrStep === "idle" && (
             <>
               <button type="button" onClick={requestQr} disabled={busy}>
                 {busy ? "Starting…" : "Generate QR code"}
               </button>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+              <div className="ctg-hint">
                 You will need a second device (computer or another phone) to scan the code.
               </div>
             </>
           )}
 
           {qrStep === "scanning" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="ctg-qr-container">
               {qrDataUrl
-                ? <img src={qrDataUrl} alt="Telegram QR login" style={{ width: 220, height: 220, borderRadius: 8, display: "block" }} />
-                : <div style={{ width: 220, height: 220, background: "var(--surface2, #1a2337)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--muted)" }}>Generating…</div>
+                ? <img src={qrDataUrl} alt="Telegram QR login" className="ctg-qr-img" />
+                : <div className="ctg-qr-placeholder">Generating…</div>
               }
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)", lineHeight: 1.5 }}>
+              <div className="ctg-hint-lh">
                 On your second device: open Telegram → Settings → Devices → Link Desktop Device → scan this code.
               </div>
               <button className="btn-ghost btn-sm" type="button" onClick={() => { stopQrPoll(); setQrStep("idle"); setQrDataUrl(null); }}>
@@ -351,8 +352,8 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
           )}
 
           {qrStep === "2fa" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span style={{ fontSize: 13 }}>2FA required — enter your Telegram cloud password.</span>
+            <div className="ctg-2fa-container">
+              <span className="ctg-2fa-label">2FA required — enter your Telegram cloud password.</span>
               <input
                 type="password"
                 placeholder="Telegram 2FA password"
@@ -378,19 +379,19 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       {mode === "bot" && (
         <>
           {linkStatus?.completed ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="ctg-bot-linked">
+              <div className="ctg-bot-linked-header">
                 <strong>{linkStatus.providerDisplayName ?? "Connected"}</strong>
                 <span className="chip green">Linked</span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+              <div className="ctg-bot-linked-hint">
                 Linked via CryptBot — messages will route through the bot, not as direct user-to-user messages.
               </div>
             </div>
           ) : linkCode ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <strong style={{ fontSize: 18 }}>{`LINK ${linkCode}`}</strong>
+            <div className="ctg-bot-code-container">
+              <div className="ctg-bot-code-row">
+                <strong className="ctg-bot-code-text">{`LINK ${linkCode}`}</strong>
                 <button
                   type="button"
                   className="btn-sm"
@@ -400,10 +401,10 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                 </button>
                 <button type="button" className="btn-ghost btn-sm" onClick={cancelLink}>Cancel</button>
               </div>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+              <div className="ctg-hint">
                 Send this code to @CryptBot in Telegram to link your account. The app will open automatically.
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="ctg-bot-actions">
                 {linkDeepMobile && (
                   <button type="button" className="btn-ghost btn-sm" onClick={() => { window.location.href = linkDeepMobile!; }}>
                     Open Telegram
@@ -415,7 +416,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)" }}>
+              <div className="ctg-hint">
                 Waiting for you to send the code…
               </div>
             </div>
@@ -424,7 +425,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
               <button type="button" onClick={() => void startLink("telegram")} disabled={linkBusy}>
                 {linkBusy ? "Generating…" : "Generate link code"}
               </button>
-              <div style={{ fontSize: 12, color: "var(--fg-muted, #888)", lineHeight: 1.5 }}>
+              <div className="ctg-bot-idle-hint">
                 Generates a code you send to @CryptBot in Telegram. Messages will route through the bot rather than as direct user-to-user messages.
               </div>
             </>

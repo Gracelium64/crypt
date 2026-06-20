@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import "./App.css";
+import "./styles/global.css";
+import "./styles/components/app-dialogs.css";
 import { useAuth } from "@/context";
 import { apiFetch } from "@/lib/api";
 import { isSecureCiphertext, decryptFromSender } from "@/lib/crypto";
@@ -381,7 +382,7 @@ function AppContent() {
 
       {toastMessage && (
         <div className="toast" role="status">
-          <span style={{ flex: 1 }}>{toastMessage}</span>
+          <span className="toast-text">{toastMessage}</span>
           <button className="toast-close" type="button" onClick={() => setToastMessage(null)} aria-label="Dismiss">✕</button>
         </div>
       )}
@@ -414,8 +415,7 @@ function AppContent() {
             {tab === "chats" && (
               <button
                 type="button"
-                className="btn-ghost"
-                style={{ fontSize: 18, padding: "2px 6px", lineHeight: 1 }}
+                className="btn-ghost nuke-trigger"
                 onClick={() => { setNukeCount(10); setNukeOpen(true); }}
                 aria-label="Nuke account"
                 title="Nuke account"
@@ -426,8 +426,7 @@ function AppContent() {
             {tab === "settings" && (
               <button
                 type="button"
-                className="btn-ghost"
-                style={{ fontSize: 18, padding: "2px 6px", lineHeight: 1 }}
+                className="btn-ghost nuke-trigger"
                 onClick={() => setOnboardingOpen(true)}
                 aria-label="How to use Crypt"
               >
@@ -509,54 +508,28 @@ function AppContent() {
           role="dialog"
           aria-modal="true"
           aria-label="Nuke account confirmation"
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.82)",
-            zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
+          className="nuke-backdrop"
         >
-          <div style={{
-            background: "var(--surface, #1a1a1a)",
-            border: "2px solid #e53e3e",
-            borderRadius: 14,
-            padding: "32px 28px",
-            maxWidth: 320,
-            width: "90%",
-            textAlign: "center",
-          }}>
-            <div style={{ fontSize: 52, lineHeight: 1 }}>☢️</div>
-            <h2 style={{ color: "#e53e3e", margin: "14px 0 8px", fontSize: 20 }}>Nuke Account</h2>
-            <p style={{ color: "var(--fg-muted, #888)", fontSize: 13, margin: "0 0 20px" }}>
+          <div className="nuke-dialog">
+            <div className="nuke-icon">☢️</div>
+            <h2 className="nuke-title">Nuke Account</h2>
+            <p className="nuke-description">
               All messages, connections, keys and your account will be permanently deleted.
             </p>
-            <div style={{ fontSize: 13, color: "var(--fg-muted, #aaa)", marginBottom: 4 }}>
+            <div className="nuke-countdown-label">
               Account will be nuked in
             </div>
-            <div style={{ fontSize: 72, fontWeight: 700, color: "#e53e3e", lineHeight: 1, margin: "4px 0" }}>
+            <div className="nuke-count">
               {nukeCount}
             </div>
-            <div style={{ fontSize: 12, color: "var(--fg-muted, #888)", marginBottom: 20 }}>seconds</div>
-            <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 4, height: 4, marginBottom: 24, overflow: "hidden" }}>
-              <div style={{
-                background: "#e53e3e",
-                height: 4,
-                width: `${(nukeCount / 10) * 100}%`,
-                transition: "width 0.95s linear",
-                borderRadius: 4,
-              }} />
+            <div className="nuke-seconds">seconds</div>
+            <div className="nuke-progress-track">
+              <div className="nuke-progress-bar" style={{ width: `${(nukeCount / 10) * 100}%` }} />
             </div>
             <button
               type="button"
               onClick={cancelNuke}
-              style={{
-                width: "100%", padding: "12px",
-                background: "transparent",
-                border: "1px solid var(--fg-muted, #666)",
-                borderRadius: 8,
-                color: "var(--fg, #eee)",
-                fontSize: 15, cursor: "pointer",
-              }}
+              className="nuke-cancel"
             >
               Cancel
             </button>

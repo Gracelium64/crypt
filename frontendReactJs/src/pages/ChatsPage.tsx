@@ -1,4 +1,5 @@
 import type { ConversationSummary, Provider } from "@/types";
+import "../styles/chat.css";
 
 const trimPreview = (text: string) =>
   text.length <= 96 ? text : `${text.slice(0, 93)}...`;
@@ -48,7 +49,7 @@ export default function ChatsPage({
                 </span>
               )}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div className="conv-row">
               <span className="conv-preview">{trimPreview(conv.lastMessagePreview ?? "")}</span>
               <span className={`conv-badge ${conv.securityState}`}>{conv.securityState}</span>
             </div>

@@ -1,4 +1,5 @@
 import { useAuth } from "@/context";
+import "../styles/settings.css";
 import KeyManager from "@/components/KeyManager";
 import ConnectTelegram from "@/components/ConnectTelegram";
 import ConnectWhatsApp from "@/components/ConnectWhatsApp";
@@ -72,7 +73,7 @@ export default function SettingsPage({
       {/* Security & Keys */}
       <div className="settings-section">
         <div className="settings-section-title">Security & Keys</div>
-        <div style={{ padding: "0 16px 12px" }}>
+        <div className="sp-key-section">
           <KeyManager
             localOwnerId={localOwnerId}
             setLocalOwnerId={setLocalOwnerId}
@@ -91,10 +92,10 @@ export default function SettingsPage({
       {/* Connect Telegram */}
       <div className="settings-section">
         <div className="settings-section-title">Connect Telegram</div>
-        <div style={{ padding: "0 16px 4px", fontSize: 13, color: "var(--text-dim, #94aac4)", lineHeight: 1.5 }}>
+        <div className="sp-tg-desc">
           <strong>Phone code</strong> — enter your number and confirm the code that appears in your Telegram app (look for a message from the "Telegram" account, not SMS). If no code arrives, try <strong>QR code</strong> — you will need a second device to scan it. As a last resort, <strong>Via CryptBot</strong> links your account reliably but routes messages through the bot instead of direct user-to-user.
         </div>
-        <div style={{ padding: "4px 16px 12px" }}>
+        <div className="sp-tg-body">
           <ConnectTelegram
             token={auth.token}
             onConnected={() => {
@@ -108,7 +109,7 @@ export default function SettingsPage({
       {/* Connect WhatsApp */}
       <div className="settings-section">
         <div className="settings-section-title">Connect WhatsApp</div>
-        <div style={{ padding: "4px 16px 12px" }}>
+        <div className="sp-wa-body">
           <ConnectWhatsApp
             token={auth.token}
             onConnected={() => {
@@ -140,8 +141,7 @@ export default function SettingsPage({
           </div>
           <button
             type="button"
-            className={toastsEnabled ? "btn-ghost btn-sm" : "btn-sm"}
-            style={toastsEnabled ? { color: "var(--green)" } : {}}
+            className={toastsEnabled ? `btn-ghost btn-sm sp-toast-on` : "btn-sm"}
             onClick={toggleToasts}
           >
             {toastsEnabled ? "On" : "Off"}
@@ -167,7 +167,7 @@ export default function SettingsPage({
         })}
       </div>
 
-      <div style={{ height: 24 }} />
+      <div className="sp-spacer" />
     </div>
   );
 }
