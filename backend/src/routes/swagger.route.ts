@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { authenticate } from "#middleware";
 
 const router = Router();
@@ -11,9 +12,21 @@ const prodGuard: RequestHandler[] = process.env.NODE_ENV === "production" ? [aut
 // Serve raw OpenAPI JSON
 router.get("/openapi.json", ...prodGuard, (_req, res) => {
   try {
-    const specPath = path.resolve(process.cwd(), "backend/openapi.json");
+    const specPath = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../../openapi.json");
     const raw = fs.readFileSync(specPath, "utf8");
     const json = JSON.parse(raw);
+
+    if (process.env.NODE_ENV === "production") {
+      const filtered = { ...json };
+      filtered.paths = Object.fromEntries(
+        Object.entries(json.paths as Record<string, Record<string, { tags?: string[] }>>).filter(
+          ([, methods]) => !Object.values(methods).some((op) => op.tags?.includes("honeypot"))
+        )
+      );
+      filtered.tags = (json.tags as { name: string }[]).filter((t) => t.name !== "honeypot");
+      return res.json(filtered);
+    }
+
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: "openapi spec not available" });

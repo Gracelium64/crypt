@@ -1,6 +1,6 @@
 # Crypt — Technical Specifications
 
-_Last verified against source: 2026-06-20 (Refactor Pass 1, Pass 2, and Pass 2 Correction applied)._
+_Last verified against source: 2026-06-21 (Refactor Pass 1, Pass 2, Pass 2 Correction applied; honeypot system, missing deps, and missing DB collection added)._
 
 ---
 
@@ -24,6 +24,9 @@ _Last verified against source: 2026-06-20 (Refactor Pass 1, Pass 2, and Pass 2 C
 | MIME detection | mime-types | 2.1.35 |
 | MIME byte-sniffing | file-type | 22.0.1 |
 | Env validation | Zod | 4.4.3 |
+| CORS | cors | 2.8.6 |
+| Env loading | dotenv | 17.4.2 |
+| Stream → buffer | streamifier | 0.1.1 |
 | Language | TypeScript | 6.0.3 |
 
 ### Frontend
@@ -35,6 +38,8 @@ _Last verified against source: 2026-06-20 (Refactor Pass 1, Pass 2, and Pass 2 C
 | Language | TypeScript | 6.0.2 |
 | Real-time | Socket.IO client | 4.8.3 |
 | QR codes | qrcode | 1.5.1 |
+| Validation | Zod | 4.4.3 |
+| Test runner | vitest | 1.0.0 |
 
 All dependencies in both `package.json` files are exact-pinned (no `^`/`~` ranges).
 
@@ -59,6 +64,7 @@ All dependencies in both `package.json` files are exact-pinned (no `^`/`~` range
 | `telegramsessions` | `TelegramSession` | gramjs MTProto session strings per account |
 | `links` | `Link` | Short-lived bot link codes (TTL, consumed on completion) |
 | `logs` | `Log` | Structured event log (level, event, accountId, context, errorMessage) — written by `logger.service.ts`; instrumented in auth failures, nuke, link completion, key mirror failure, and Telegram session restore failure |
+| `honeypots` | `Honeypot` | Attacker probe log — records ip, route, method, userAgent for every hit on a honeypot decoy route |
 
 ---
 
@@ -147,6 +153,12 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 
 ---
 
+## Honeypot
+
+`backend/src/routes/honeypot.route.ts` is mounted at `/api` before all real routes in `server.ts`. It intercepts ~22 paths that automated scanners and attackers typically probe (`/api/users`, `/api/credentials`, `/api/env`, `/api/tokens`, `/api/debug`, `/api/v1/users`, etc.) and returns convincing but entirely fake JSON responses. Every hit is logged to the `honeypots` MongoDB collection via `Honeypot.create()` (ip, route, method, userAgent). No authentication is applied — the decoy must be reachable without a JWT to catch scanners. Real routes at these paths do not exist; they are only served by the honeypot handler.
+
+---
+
 ## API Routes
 
 | Method | Path | Auth | Purpose |
@@ -187,6 +199,7 @@ User A (Crypt) ──MTProto──► Telegram servers ──► User B's Telegr
 | POST | `/api/admin/providers/test` | Admin token | Test provider send |
 | GET | `/api/openapi.json` | No (dev) / JWT (prod) | OpenAPI schema — gated by `NODE_ENV === "production"` |
 | GET | `/api/docs` | No (dev) / JWT (prod) | Swagger UI — gated by `NODE_ENV === "production"` |
+| GET/POST | `/api/users`, `/api/users/login`, `/api/users/:id`, `/api/accounts`, `/api/credentials`, `/api/env`, `/api/config`, `/api/settings`, `/api/sessions`, `/api/tokens`, `/api/logs`, `/api/db/stats`, `/api/analytics`, `/api/reports`, `/api/payments`, `/api/billing`, `/api/export`, `/api/backup`, `/api/system`, `/api/debug`, `/api/internal`, `/api/v1/users` | None (intentional decoys) | **Honeypot routes** — return convincing fake data; log every hit to the `honeypots` collection. Mounted before all real routes in `server.ts`. |
 
 ---
 

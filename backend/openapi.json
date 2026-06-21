@@ -3,12 +3,24 @@
   "info": {
     "title": "Crypt Companion API",
     "version": "0.1.0",
-    "description": "Minimal OpenAPI spec for local development and testing."
+    "description": "Full API reference for the Crypt Companion backend."
   },
   "servers": [{ "url": "http://localhost:4000/api" }],
+  "tags": [
+    { "name": "auth" },
+    { "name": "keys" },
+    { "name": "link" },
+    { "name": "messages" },
+    { "name": "providers" },
+    { "name": "telegram-direct" },
+    { "name": "uploads" },
+    { "name": "admin" },
+    { "name": "honeypot", "description": "Trap routes — visible in dev only" }
+  ],
   "paths": {
     "/auth/signup": {
       "post": {
+        "tags": ["auth"],
         "summary": "Sign up",
         "requestBody": {
           "required": true,
@@ -16,12 +28,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["email", "password"],
                 "properties": {
-                  "email": { "type": "string" },
-                  "password": { "type": "string" },
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8, "maxLength": 24 },
                   "displayName": { "type": "string" }
-                },
-                "required": ["email", "password"]
+                }
               }
             }
           }
@@ -31,44 +43,528 @@
     },
     "/auth/login": {
       "post": {
+        "tags": ["auth"],
         "summary": "Login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 1, "maxLength": 24 }
+                }
+              }
+            }
+          }
+        },
         "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Get current user",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/auth/account": {
+      "delete": {
+        "tags": ["auth"],
+        "summary": "Delete own account",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
       }
     },
     "/keys/register": {
       "post": {
+        "tags": ["keys"],
         "summary": "Register public key",
         "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "OK" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["publicKey"],
+                "properties": {
+                  "publicKey": { "type": "string", "minLength": 1 },
+                  "privateKeyJwk": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/keys/me/private": {
+      "get": {
+        "tags": ["keys"],
+        "summary": "Get own private key",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/keys/{ownerId}": {
+      "get": {
+        "tags": ["keys"],
+        "summary": "Get public key by owner ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "ownerId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "404": { "description": "Not found" } }
       }
     },
     "/provider/link/init": {
       "post": {
+        "tags": ["link"],
         "summary": "Create LINK code",
         "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "OK" } }
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "enum": ["telegram", "whatsapp"] },
+                  "ttlMinutes": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
       }
     },
     "/provider/link/status/{code}": {
       "get": {
+        "tags": ["link"],
         "summary": "Get LINK status",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
-          {
-            "name": "code",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/provider/link/complete": {
+      "post": {
+        "tags": ["link"],
+        "summary": "Complete link (admin only)",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["code", "providerChatId"],
+                "properties": {
+                  "code": { "type": "string", "minLength": 1 },
+                  "provider": { "type": "string", "enum": ["telegram", "whatsapp"] },
+                  "providerChatId": { "type": "string", "minLength": 1 },
+                  "providerDisplayName": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/messages": {
+      "get": {
+        "tags": ["messages"],
+        "summary": "Get messages",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "provider", "in": "query", "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } },
+          { "name": "chatId", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 40 } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/conversations": {
+      "get": {
+        "tags": ["messages"],
+        "summary": "Get conversations",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "provider", "in": "query", "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 200 } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
       }
     },
     "/messages/send": {
       "post": {
-        "summary": "Send message (requires linked provider)",
+        "tags": ["messages"],
+        "summary": "Send message",
         "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Created" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["provider", "from", "to", "chatId"],
+                "properties": {
+                  "provider": { "type": "string", "enum": ["telegram", "whatsapp"] },
+                  "from": { "type": "string", "minLength": 1 },
+                  "to": { "type": "string", "minLength": 1 },
+                  "chatId": { "type": "string", "minLength": 1 },
+                  "text": { "type": "string" },
+                  "encryptedText": { "type": "string" },
+                  "encrypt": { "type": "boolean", "default": true },
+                  "attachments": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                      "type": "object",
+                      "required": ["type", "url"],
+                      "properties": {
+                        "type": { "type": "string", "enum": ["image"] },
+                        "url": { "type": "string", "format": "uri" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "401": { "description": "Unauthorized" } }
       }
+    },
+    "/messages/conversation": {
+      "delete": {
+        "tags": ["messages"],
+        "summary": "Delete conversation",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "provider", "in": "query", "required": true, "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } },
+          { "name": "chatId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/messages/all": {
+      "delete": {
+        "tags": ["messages"],
+        "summary": "Delete all messages",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "provider", "in": "query", "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/provider/connections": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "Get linked provider connections",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/provider/connections/{id}": {
+      "delete": {
+        "tags": ["providers"],
+        "summary": "Delete a provider connection",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "403": { "description": "Forbidden" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/provider/contact/search": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "Search contact by username",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "provider", "in": "query", "required": true, "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } },
+          { "name": "username", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/provider/resolve": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "Resolve contact by chatId (admin only)",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Requires admin role.",
+        "parameters": [
+          { "name": "provider", "in": "query", "required": true, "schema": { "type": "string", "enum": ["telegram", "whatsapp"] } },
+          { "name": "chatId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/providers/status": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "Get provider connection status",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/providers/telegram/webhook": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "Telegram webhook verification (Telegram-internal)",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "tags": ["providers"],
+        "summary": "Telegram webhook receiver (Telegram-internal)",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/providers/whatsapp/webhook": {
+      "get": {
+        "tags": ["providers"],
+        "summary": "WhatsApp webhook verification (Meta-internal)",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "tags": ["providers"],
+        "summary": "WhatsApp webhook receiver (Meta-internal)",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/telegram/direct/status": {
+      "get": {
+        "tags": ["telegram-direct"],
+        "summary": "Get Telegram Direct session status",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/request-code": {
+      "post": {
+        "tags": ["telegram-direct"],
+        "summary": "Request Telegram phone auth code",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phoneNumber"],
+                "properties": {
+                  "phoneNumber": { "type": "string", "minLength": 6 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/verify-code": {
+      "post": {
+        "tags": ["telegram-direct"],
+        "summary": "Verify Telegram phone auth code",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["code"],
+                "properties": {
+                  "code": { "type": "string", "minLength": 1 },
+                  "password": { "type": "string", "description": "2FA password if enabled" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/session": {
+      "delete": {
+        "tags": ["telegram-direct"],
+        "summary": "Delete Telegram Direct session",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/reset-sessions": {
+      "post": {
+        "tags": ["telegram-direct"],
+        "summary": "Reset all Telegram Direct sessions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/request-qr": {
+      "post": {
+        "tags": ["telegram-direct"],
+        "summary": "Request Telegram QR login",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/qr-status": {
+      "get": {
+        "tags": ["telegram-direct"],
+        "summary": "Get Telegram QR login status",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/telegram/direct/qr-2fa": {
+      "post": {
+        "tags": ["telegram-direct"],
+        "summary": "Submit 2FA password for QR login",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/uploads/base64": {
+      "post": {
+        "tags": ["uploads"],
+        "summary": "Upload file as base64",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/uploads/formidable": {
+      "post": {
+        "tags": ["uploads"],
+        "summary": "Upload file via multipart form",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/admin/telegram/set-webhook": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Set Telegram webhook (admin only)",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Requires admin role.",
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/admin/telegram/delete-webhook": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Delete Telegram webhook (admin only)",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Requires admin role.",
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/admin/providers/test": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Test provider connection (admin only)",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Requires admin role.",
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/users": {
+      "get": { "tags": ["honeypot"], "summary": "List users (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/users/login": {
+      "post": { "tags": ["honeypot"], "summary": "User login (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": ["honeypot"],
+        "summary": "Get user by ID (trap)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/accounts": {
+      "get": { "tags": ["honeypot"], "summary": "List accounts (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/credentials": {
+      "get": { "tags": ["honeypot"], "summary": "List credentials (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/env": {
+      "get": { "tags": ["honeypot"], "summary": "Get env vars (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/config": {
+      "get": { "tags": ["honeypot"], "summary": "Get config (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/settings": {
+      "get": { "tags": ["honeypot"], "summary": "Get settings (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/sessions": {
+      "get": { "tags": ["honeypot"], "summary": "List sessions (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/tokens": {
+      "get": { "tags": ["honeypot"], "summary": "List tokens (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/logs": {
+      "get": { "tags": ["honeypot"], "summary": "Get logs (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/db/stats": {
+      "get": { "tags": ["honeypot"], "summary": "Get DB stats (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/analytics": {
+      "get": { "tags": ["honeypot"], "summary": "Get analytics (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/reports": {
+      "get": { "tags": ["honeypot"], "summary": "Get reports (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/payments": {
+      "get": { "tags": ["honeypot"], "summary": "Get payments (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/billing": {
+      "get": { "tags": ["honeypot"], "summary": "Get billing (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/export": {
+      "get": { "tags": ["honeypot"], "summary": "Export data (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/backup": {
+      "get": { "tags": ["honeypot"], "summary": "Get backup (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/system": {
+      "get": { "tags": ["honeypot"], "summary": "Get system info (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/debug": {
+      "get": { "tags": ["honeypot"], "summary": "Debug endpoint (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/internal": {
+      "get": { "tags": ["honeypot"], "summary": "Internal endpoint (trap)", "responses": { "200": { "description": "OK" } } }
+    },
+    "/v1/users": {
+      "get": { "tags": ["honeypot"], "summary": "List users v1 (trap)", "responses": { "200": { "description": "OK" } } }
     }
   },
   "components": {

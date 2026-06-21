@@ -1,0 +1,4 @@
+- fix indicator of new message in another service on Chats screen
+- swagger UI
+- Postman tests
+- CSS
