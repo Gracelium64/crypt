@@ -24,7 +24,8 @@ router.get("/openapi.json", ...prodGuard, (_req, res) => {
         )
       );
       filtered.tags = (json.tags as { name: string }[]).filter((t) => t.name !== "honeypot");
-      return res.json(filtered);
+      res.json(filtered);
+      return;
     }
 
     res.json(json);
