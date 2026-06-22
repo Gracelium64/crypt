@@ -1,1 +1,1 @@
-export { loginRequest, registerRequest, meRequest, logoutRequest, nukeAccountRequest } from "./auth";
+export { loginRequest, registerRequest, meRequest, logoutRequest, nukeAccountRequest, verifyPasswordRequest } from "./auth";

@@ -39,6 +39,15 @@ export const logoutRequest = async (): Promise<void> => {
   // No server logout endpoint — token cleared client-side
 };
 
+export const verifyPasswordRequest = async (token: string, password: string): Promise<boolean> => {
+  const resp = await apiFetch(
+    "/auth/verify-password",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) },
+    token,
+  );
+  return resp.ok;
+};
+
 export const nukeAccountRequest = async (token: string): Promise<void> => {
   const resp = await apiFetch("/auth/account", { method: "DELETE" }, token);
   if (!resp.ok) {

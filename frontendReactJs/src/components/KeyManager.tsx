@@ -10,7 +10,7 @@ type Props = {
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
-  generateAndRegisterKeypair: (password?: string | null) => Promise<void>;
+  generateAndRegisterKeypair: (password: string) => Promise<void>;
   setPrivJwk: (v: EcdhPrivateJwk | null) => void;
   authUserEmail?: string | null;
 };
@@ -32,11 +32,7 @@ export default function KeyManager(props: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const handleClick = () => {
-    if (pubKeyB64) {
-      setConfirming(true);
-    } else {
-      void generateAndRegisterKeypair();
-    }
+    setConfirming(true);
   };
 
   const handleConfirmGenerate = () => {
@@ -78,7 +74,9 @@ export default function KeyManager(props: Props) {
       <div className="key-actions">
         {confirming ? (
           <div className="key-confirm-warning">
-            This will replace your current keypair. Previous messages will become unreadable.
+            {pubKeyB64
+              ? "This will replace your current keypair. Previous messages will become unreadable."
+              : "Enter your account password to generate and back up a new keypair."}
             <label>
               Account password
               <input

@@ -11,5 +11,10 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(24),
 });
 
+export const verifyPasswordSchema = z.object({
+  password: z.string().min(1).max(24),
+});
+
 export type SignupBody = z.infer<typeof signupSchema>;
 export type LoginBody = z.infer<typeof loginSchema>;
+export type VerifyPasswordBody = z.infer<typeof verifyPasswordSchema>;

@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { isSecureCiphertext, decryptFromSender } from "@/lib/crypto";
 import { useConversations, useConnections, useProviders, useRealtime, useSend } from "@/hooks";
 import { generateKeypair as generateKeypairService, registerPublicKey as registerPublicKeyService, fetchAndDecryptPrivateKey, resolveKeypairDisplay } from "@/services";
-import { nukeAccountRequest } from "@/data";
+import { nukeAccountRequest, verifyPasswordRequest } from "@/data";
 import { ProtectedLayout } from "@/layouts";
 import { ChatsPage, FindPage, SettingsPage, ChatView } from "@/pages";
 import { OnboardingModal } from "@/components";
@@ -342,7 +342,7 @@ function AppContent() {
     return () => window.clearInterval(timer);
   }, [isRealtime, loadConversations, loadMessages]);
 
-  const generateAndRegisterKeypair = async (password?: string | null) => {
+  const generateAndRegisterKeypair = async (password: string) => {
     if (!localOwnerId) { setKeyError("Enter your local ID first"); return; }
     if (!window.isSecureContext) {
       setKeyError("Key generation requires HTTPS — use the Cloudflare tunnel URL.");
@@ -351,11 +351,16 @@ function AppContent() {
     setKeyError(null);
     setKeyBusy(true);
     try {
+      const passwordOk = await verifyPasswordRequest(auth.token ?? "", password);
+      if (!passwordOk) {
+        setKeyError("Incorrect password.");
+        return;
+      }
       const r = await generateKeypairService(localOwnerId);
       setPubKeyB64(r.pubB64);
       setPrivJwk(r.privJwk);
       setFingerprint(r.fingerprint);
-      await registerPublicKeyService(r.pubB64, auth.token, r.privJwk, password ?? null);
+      await registerPublicKeyService(r.pubB64, auth.token, r.privJwk, password);
       await connectionsHook.loadConnectionsList();
     } catch (err) {
       setKeyError(`Key setup failed: ${err instanceof Error ? err.message : String(err)}`);

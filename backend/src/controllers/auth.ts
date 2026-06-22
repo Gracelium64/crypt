@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { Account, Key, Link, Message, ProviderConnection, TelegramSession } from "#models";
 import { logEvent, disconnectMTProtoSession } from "#services";
 import { env } from "#config";
-import type { SignupBody, LoginBody } from "#schemas";
+import type { SignupBody, LoginBody, VerifyPasswordBody } from "#schemas";
 
 const MAX_LOGIN_ATTEMPTS = 8;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -92,6 +92,25 @@ export const me: RequestHandler = async (req, res, next) => {
       ok: true,
       data: { email: account.email, displayName: account.displayName, id: account._id },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyPassword: RequestHandler = async (req, res, next) => {
+  const accountId = req.account?.accountId;
+  const { password } = req.body as VerifyPasswordBody;
+  try {
+    const account = await Account.findById(accountId).lean();
+    if (!account) {
+      next(new Error("Account not found", { cause: { status: 404 } }));
+      return;
+    }
+    if (!bcrypt.compareSync(password, account.passwordHash)) {
+      next(new Error("Incorrect password", { cause: { status: 401 } }));
+      return;
+    }
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }
