@@ -342,7 +342,7 @@ function AppContent() {
     return () => window.clearInterval(timer);
   }, [isRealtime, loadConversations, loadMessages]);
 
-  const generateAndRegisterKeypair = async () => {
+  const generateAndRegisterKeypair = async (password?: string | null) => {
     if (!localOwnerId) { setKeyError("Enter your local ID first"); return; }
     if (!window.isSecureContext) {
       setKeyError("Key generation requires HTTPS — use the Cloudflare tunnel URL.");
@@ -355,7 +355,7 @@ function AppContent() {
       setPubKeyB64(r.pubB64);
       setPrivJwk(r.privJwk);
       setFingerprint(r.fingerprint);
-      await registerPublicKeyService(r.pubB64, auth.token);
+      await registerPublicKeyService(r.pubB64, auth.token, r.privJwk, password ?? null);
       await connectionsHook.loadConnectionsList();
     } catch (err) {
       setKeyError(`Key setup failed: ${err instanceof Error ? err.message : String(err)}`);

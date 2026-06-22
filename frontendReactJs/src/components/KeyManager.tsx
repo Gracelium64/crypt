@@ -10,7 +10,7 @@ type Props = {
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
-  generateAndRegisterKeypair: () => Promise<void>;
+  generateAndRegisterKeypair: (password?: string | null) => Promise<void>;
   setPrivJwk: (v: EcdhPrivateJwk | null) => void;
   authUserEmail?: string | null;
 };
@@ -29,6 +29,7 @@ export default function KeyManager(props: Props) {
   } = props;
 
   const [confirming, setConfirming] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const handleClick = () => {
     if (pubKeyB64) {
@@ -36,6 +37,18 @@ export default function KeyManager(props: Props) {
     } else {
       void generateAndRegisterKeypair();
     }
+  };
+
+  const handleConfirmGenerate = () => {
+    const pw = confirmPassword.trim() || null;
+    setConfirming(false);
+    setConfirmPassword("");
+    void generateAndRegisterKeypair(pw);
+  };
+
+  const handleCancelConfirm = () => {
+    setConfirming(false);
+    setConfirmPassword("");
   };
 
   return (
@@ -65,15 +78,26 @@ export default function KeyManager(props: Props) {
         {confirming ? (
           <div className="key-confirm-warning">
             This will replace your current keypair. Previous messages will become unreadable.
+            <label>
+              Account password
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleConfirmGenerate(); }}
+                placeholder="Enter your login password to back up the new keypair"
+                autoComplete="current-password"
+              />
+            </label>
             <div className="key-confirm-actions">
               <button
                 type="button"
-                onClick={() => { setConfirming(false); void generateAndRegisterKeypair(); }}
+                onClick={handleConfirmGenerate}
                 disabled={keyBusy}
               >
                 {keyBusy ? <span className="spinner" /> : "Generate anyway"}
               </button>
-              <button type="button" onClick={() => setConfirming(false)}>
+              <button type="button" onClick={handleCancelConfirm}>
                 Cancel
               </button>
             </div>

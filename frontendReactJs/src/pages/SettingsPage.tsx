@@ -21,7 +21,7 @@ type Props = {
   fingerprint: string | null;
   keyBusy: boolean;
   keyError: string | null;
-  generateAndRegisterKeypair: () => Promise<void>;
+  generateAndRegisterKeypair: (password?: string | null) => Promise<void>;
   setPrivJwk: (v: EcdhPrivateJwk | null) => void;
   connections: Connection[];
   connectionsBusy: boolean;
