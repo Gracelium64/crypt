@@ -21,8 +21,12 @@ export default function useConversations(token?: string | null) {
       if (!resp.ok) throw new Error("Could not load conversations");
       const payload = await resp.json();
       const parsed = z.array(ConversationSummarySchema).safeParse(payload.data ?? []);
-      if (parsed.success) setConversations(parsed.data);
-      else console.error("[Conversations] response shape mismatch:", parsed.error);
+      if (parsed.success) {
+        setConversations((prev) => [
+          ...prev.filter((c) => c.provider !== currentProvider),
+          ...parsed.data,
+        ]);
+      } else console.error("[Conversations] response shape mismatch:", parsed.error);
     } catch (_err) {
       console.error("loadConversations error", _err);
     }

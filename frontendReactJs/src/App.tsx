@@ -157,6 +157,14 @@ function AppContent() {
   useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses, auth.token]);
   useEffect(() => { void connectionsHook.loadConnectionsList(); }, [auth.token]);
 
+  // Load conversations for all providers on initial login so cross-provider unread dots work.
+  useEffect(() => {
+    if (!auth.token) return;
+    for (const p of supportedProviders) {
+      void loadConversations(p);
+    }
+  }, [auth.token]);
+
   // Auto-derive owner id and silently set up E2E keypair when signed in
   useEffect(() => {
     if (!auth.user?.email || !auth.token) return;
@@ -221,7 +229,7 @@ function AppContent() {
         // 2. Try fetching from server, decrypting with login password (new device / cleared storage)
         const serverJwk = await fetchAndDecryptPrivateKey(auth.token, password);
         if (serverJwk) {
-          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(auth.user?.id ?? "")}`).catch(() => null);
+          const serverPubResp = await apiFetch(`/keys/${encodeURIComponent(auth.user?.id ?? "")}`, {}, auth.token).catch(() => null);
           if (serverPubResp?.ok) {
             const kj = await serverPubResp.json().catch(() => null);
             const serverPub: string | null = kj?.data?.publicKey ?? null;
@@ -289,9 +297,13 @@ function AppContent() {
 
   const onNewMessage = useCallback(
     (message: ChatMessage) => {
-      if (message.provider !== providerRef.current) return;
       // Ignore broadcasts that belong to another account
       if (message.accountId && auth.user?.id && message.accountId !== auth.user.id) return;
+      if (message.provider !== providerRef.current) {
+        // Update that provider's conversation list so the unread pill dot appears immediately
+        void loadConversations(message.provider as Provider);
+        return;
+      }
       void loadConversations(providerRef.current);
       if (message.chatId !== selectedChatIdRef.current) return;
       if (handleIncomingMessage) {
@@ -322,7 +334,9 @@ function AppContent() {
   useEffect(() => {
     const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
-      void loadConversations(providerRef.current);
+      for (const p of supportedProviders) {
+        void loadConversations(p);
+      }
       void loadMessages(providerRef.current, selectedChatIdRef.current, lastSyncRef.current || undefined);
     }, interval);
     return () => window.clearInterval(timer);
