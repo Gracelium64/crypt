@@ -43,7 +43,7 @@ function AppContent() {
     () => localStorage.getItem("crypt:toasts") !== "off",
   );
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [loadingProviders, setLoadingProviders] = useState<Set<Provider>>(new Set());
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const convHook = useConversations(auth.token);
@@ -55,10 +55,13 @@ function AppContent() {
   const providerRef = useRef(provider);
   const selectedChatIdRef = useRef(selectedChatId);
   const lastSyncRef = useRef(convHook.lastSync);
+  const conversationsRef = useRef(convHook.conversations);
+  const readTimestamps = useRef<Map<string, string | undefined>>(new Map());
 
   useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { selectedChatIdRef.current = selectedChatId; }, [selectedChatId]);
   useEffect(() => { lastSyncRef.current = convHook.lastSync; }, [convHook.lastSync]);
+  useEffect(() => { conversationsRef.current = convHook.conversations; }, [convHook.conversations]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -115,6 +118,8 @@ function AppContent() {
     setSelectedChatId(chatId);
     setChatOpen(true);
     convHook.markConversationRead(chatId);
+    const conv = conversationsRef.current.find((c) => c.chatId === chatId);
+    readTimestamps.current.set(chatId, conv?.lastMessageAt);
   }, [convHook.markConversationRead]);
 
   useEffect(() => {
@@ -131,12 +136,16 @@ function AppContent() {
     providerStatuses.find((s) => s.provider === provider) ?? null;
 
   const loadConversations = useCallback(
-    async (p: Provider, showLoading = true) => {
-      if (showLoading) setConversationsLoading(true);
+    async (p: Provider) => {
+      setLoadingProviders((prev) => new Set(prev).add(p));
       try {
         await convHook.loadConversations(p);
       } finally {
-        if (showLoading) setConversationsLoading(false);
+        setLoadingProviders((prev) => {
+          const next = new Set(prev);
+          next.delete(p);
+          return next;
+        });
       }
     },
     [convHook.loadConversations],
@@ -157,11 +166,11 @@ function AppContent() {
   useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses, auth.token]);
   useEffect(() => { void connectionsHook.loadConnectionsList(); }, [auth.token]);
 
-  // Load all providers silently on login so cross-provider unread dots are populated.
+  // Load all providers on login so cross-provider unread dots are populated.
   useEffect(() => {
     if (!auth.token) return;
     for (const p of supportedProviders) {
-      void loadConversations(p, false);
+      void loadConversations(p);
     }
   }, [auth.token]);
 
@@ -300,8 +309,7 @@ function AppContent() {
       // Ignore broadcasts that belong to another account
       if (message.accountId && auth.user?.id && message.accountId !== auth.user.id) return;
       if (message.provider !== providerRef.current) {
-        // Update that provider's conversations silently so the unread pill dot appears immediately
-        void loadConversations(message.provider as Provider, false);
+        void loadConversations(message.provider as Provider);
         return;
       }
       void loadConversations(providerRef.current);
@@ -335,7 +343,7 @@ function AppContent() {
     const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
       for (const p of supportedProviders) {
-        void loadConversations(p, false);
+        void loadConversations(p);
       }
       void loadMessages(providerRef.current, selectedChatIdRef.current, lastSyncRef.current || undefined);
     }, interval);
@@ -507,12 +515,14 @@ function AppContent() {
               <ChatsPage
                 conversations={convHook.conversations
                   .filter((c) => c.provider === provider)
-                  .map((c) =>
-                    chatOpen && c.chatId === selectedChatId
-                      ? { ...c, lastDirection: undefined }
-                      : c,
-                  )}
-                conversationsLoading={conversationsLoading}
+                  .map((c) => {
+                    const readAt = readTimestamps.current.get(c.chatId);
+                    const isRead =
+                      (chatOpen && c.chatId === selectedChatId) ||
+                      (readTimestamps.current.has(c.chatId) && readAt === c.lastMessageAt);
+                    return isRead ? { ...c, lastDirection: undefined } : c;
+                  })}
+                conversationsLoading={loadingProviders.has(provider)}
                 hasConnections={connectionsHook.connections.some((c) => c.provider === provider)}
                 connectionsLoading={connectionsHook.connectionsBusy}
                 selectedChatId={selectedChatId}
