@@ -119,7 +119,7 @@ function AppContent() {
     setChatOpen(true);
     convHook.markConversationRead(chatId);
     const conv = conversationsRef.current.find((c) => c.chatId === chatId);
-    readTimestamps.current.set(chatId, conv?.lastMessageAt);
+    readTimestamps.current.set(chatId, conv?.lastMessageAt ?? undefined);
   }, [convHook.markConversationRead]);
 
   useEffect(() => {
