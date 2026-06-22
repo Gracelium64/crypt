@@ -131,12 +131,12 @@ function AppContent() {
     providerStatuses.find((s) => s.provider === provider) ?? null;
 
   const loadConversations = useCallback(
-    async (p: Provider) => {
-      setConversationsLoading(true);
+    async (p: Provider, showLoading = true) => {
+      if (showLoading) setConversationsLoading(true);
       try {
         await convHook.loadConversations(p);
       } finally {
-        setConversationsLoading(false);
+        if (showLoading) setConversationsLoading(false);
       }
     },
     [convHook.loadConversations],
@@ -157,11 +157,11 @@ function AppContent() {
   useEffect(() => { void loadProviderStatuses(); }, [loadProviderStatuses, auth.token]);
   useEffect(() => { void connectionsHook.loadConnectionsList(); }, [auth.token]);
 
-  // Load conversations for all providers on initial login so cross-provider unread dots work.
+  // Load all providers silently on login so cross-provider unread dots are populated.
   useEffect(() => {
     if (!auth.token) return;
     for (const p of supportedProviders) {
-      void loadConversations(p);
+      void loadConversations(p, false);
     }
   }, [auth.token]);
 
@@ -300,8 +300,8 @@ function AppContent() {
       // Ignore broadcasts that belong to another account
       if (message.accountId && auth.user?.id && message.accountId !== auth.user.id) return;
       if (message.provider !== providerRef.current) {
-        // Update that provider's conversation list so the unread pill dot appears immediately
-        void loadConversations(message.provider as Provider);
+        // Update that provider's conversations silently so the unread pill dot appears immediately
+        void loadConversations(message.provider as Provider, false);
         return;
       }
       void loadConversations(providerRef.current);
@@ -335,7 +335,7 @@ function AppContent() {
     const interval = isRealtime ? 30_000 : 10_000;
     const timer = window.setInterval(() => {
       for (const p of supportedProviders) {
-        void loadConversations(p);
+        void loadConversations(p, false);
       }
       void loadMessages(providerRef.current, selectedChatIdRef.current, lastSyncRef.current || undefined);
     }, interval);
@@ -500,7 +500,13 @@ function AppContent() {
           <div className="screen">
             {tab === "chats" && (
               <ChatsPage
-                conversations={convHook.conversations}
+                conversations={convHook.conversations
+                  .filter((c) => c.provider === provider)
+                  .map((c) =>
+                    chatOpen && c.chatId === selectedChatId
+                      ? { ...c, lastDirection: undefined }
+                      : c,
+                  )}
                 conversationsLoading={conversationsLoading}
                 hasConnections={connectionsHook.connections.some((c) => c.provider === provider)}
                 connectionsLoading={connectionsHook.connectionsBusy}
