@@ -40,7 +40,8 @@ export default function KeyManager(props: Props) {
   };
 
   const handleConfirmGenerate = () => {
-    const pw = confirmPassword.trim() || null;
+    const pw = confirmPassword.trim();
+    if (!pw) return;
     setConfirming(false);
     setConfirmPassword("");
     void generateAndRegisterKeypair(pw);
@@ -84,7 +85,7 @@ export default function KeyManager(props: Props) {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleConfirmGenerate(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && confirmPassword.trim()) handleConfirmGenerate(); }}
                 placeholder="Enter your login password to back up the new keypair"
                 autoComplete="current-password"
               />
@@ -93,7 +94,7 @@ export default function KeyManager(props: Props) {
               <button
                 type="button"
                 onClick={handleConfirmGenerate}
-                disabled={keyBusy}
+                disabled={keyBusy || !confirmPassword.trim()}
               >
                 {keyBusy ? <span className="spinner" /> : "Generate anyway"}
               </button>
