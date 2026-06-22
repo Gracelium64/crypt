@@ -52,7 +52,7 @@ export default function KeyManager(props: Props) {
     <div className="panel key-manager">
       <h3>Key Manager (E2E scaffold)</h3>
       <label>
-        Your local ID
+        Your account ID
         <input
           type="text"
           value={localOwnerId}
@@ -78,12 +78,14 @@ export default function KeyManager(props: Props) {
               ? "This will replace your current keypair. Previous messages will become unreadable."
               : "Enter your account password to generate and back up a new keypair."}
             <label>
-              Account password
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && confirmPassword.trim()) handleConfirmGenerate(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && confirmPassword.trim())
+                    handleConfirmGenerate();
+                }}
                 placeholder="Enter your login password to back up the new keypair"
                 autoComplete="current-password"
               />
@@ -108,13 +110,11 @@ export default function KeyManager(props: Props) {
         )}
       </div>
 
-      {keyError && (
-        <div className="key-error">
-          {keyError}
-        </div>
-      )}
+      {keyError && <div className="key-error">{keyError}</div>}
 
-      {pubKeyB64 && (
+      {/* Public key and Private key display - commented out for production, reference for debugging */}
+
+      {/* {pubKeyB64 && (
         <div className="key-preview">
           <label>Public key (base64)</label>
           <textarea readOnly rows={3} value={pubKeyB64} />
@@ -125,7 +125,7 @@ export default function KeyManager(props: Props) {
             <div className="private-status">Private key stored locally</div>
           )}
         </div>
-      )}
+      )} */}
     </div>
   );
 }

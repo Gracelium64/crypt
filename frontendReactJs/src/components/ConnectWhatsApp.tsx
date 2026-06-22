@@ -7,14 +7,8 @@ interface Props {
 }
 
 export default function ConnectWhatsApp({ token, onConnected }: Props) {
-  const {
-    linkCode,
-    linkStatus,
-    linkDeepWeb,
-    linkBusy,
-    startLink,
-    cancelLink,
-  } = useLink(token, onConnected);
+  const { linkCode, linkStatus, linkDeepWeb, linkBusy, startLink, cancelLink } =
+    useLink(token, onConnected);
 
   if (linkStatus?.completed) {
     return (
@@ -40,23 +34,30 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
           >
             Copy
           </button>
-          <button type="button" className="btn-ghost btn-sm" onClick={cancelLink}>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={cancelLink}
+          >
             Cancel
           </button>
         </div>
         <div className="cwa-hint">
-          Send this code in WhatsApp to the business number to link your account.
+          Send this code in WhatsApp to the business number to link your
+          account.
         </div>
         <div className="cwa-deep-actions">
           {linkDeepWeb && (
-            <button type="button" className="btn-ghost btn-sm" onClick={() => window.open(linkDeepWeb!, "_blank")}>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => window.open(linkDeepWeb!, "_blank")}
+            >
               Open WhatsApp
             </button>
           )}
         </div>
-        <div className="cwa-hint">
-          Waiting for you to send the code…
-        </div>
+        <div className="cwa-hint">Waiting for you to send the code…</div>
       </div>
     );
   }
@@ -71,7 +72,12 @@ export default function ConnectWhatsApp({ token, onConnected }: Props) {
         {linkBusy ? "Generating…" : "Generate link code"}
       </button>
       <div className="cwa-hint">
-        Generates a code you send to the WhatsApp business number to link your account.
+        Generates a code you send to the WhatsApp business number to link your
+        account.
+      </div>
+      <div className="cwa-hint">
+        Note: Crypt is in prototype stage with limited WhatsApp Cloud API
+        access. To gain access to WhatsApp Link contact admin.
       </div>
     </div>
   );

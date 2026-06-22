@@ -1,3 +1,16 @@
+/* Key manager */
+.key-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.key-manager label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* ── Key fingerprint display ── */
 .fingerprint {
   font-family: monospace;
@@ -18,11 +31,22 @@
   padding: 16px;
   margin: 8px 12px;
 }
-.verify-panel h4 { font-size: 15px; margin-bottom: 12px; }
-.verify-qr img { width: 140px; border-radius: 10px; margin: 8px 0; }
+.verify-panel h4 {
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+.verify-qr img {
+  width: 140px;
+  border-radius: 10px;
+  margin: 8px 0;
+}
 
 /* ── Key manager (settings panel) ── */
-.key-qr { width: 120px; border-radius: 10px; margin-top: 8px; }
+.key-qr {
+  width: 120px;
+  border-radius: 10px;
+  margin-top: 8px;
+}
 
 /* ── KeyManager inline style extractions ── */
 .key-auth-hint {
@@ -35,6 +59,9 @@
   font-size: 13px;
   color: var(--red, #e53e3e);
   margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .key-confirm-actions {
