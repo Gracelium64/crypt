@@ -1892,6 +1892,71 @@ Against **8 days remaining**. Essentially zero buffer — tighter than the 2026-
 
 ---
 
+---
+
+## Debug Session 2026-06-22 — Key continuity bugs
+
+### Bug 4 — New-device key recovery silently failing (missing auth token)
+
+**Symptom:** Every new-device login to an existing account generated a fresh keypair. All three tested devices (Android, iPhone, desktop) showed different fingerprints for the same account.
+
+**Root cause:** Step 2 of `autoSetupKey` calls `apiFetch('/keys/${userId}')` to fetch the stored public key from the server — but with no auth token. `GET /keys/:ownerId` requires `authenticate` middleware (added in C3). The 401 response made recovery fall through silently to step 3 (generate fresh key) on every new-device login.
+
+**Fix (`App.tsx`):** Pass `auth.token` as the third argument to the `apiFetch` call in step 2 of `autoSetupKey`.
+
+**Why logout/login on the same device worked fine:** Step 1 (localStorage) succeeds on same-device restore — step 2 is never reached. The bug only triggered when localStorage was empty (cleared at logout) and step 2 was the first path attempted.
+
+**Pattern:** A silent fallthrough is the hardest class of bug to diagnose. `autoSetupKey` has three steps and falls through silently on failure. Any single-step failure causes a new key to be generated with no log entry at the call site. Always check auth requirements on every fetch added to authenticated flows.
+
+---
+
+### Bug 5 — Manual keypair regeneration erases the server blob
+
+**Symptom:** Generate new keypair → logout → login → keypair changes. Logout/login without generating in between was stable.
+
+**Root cause:** `generateAndRegisterKeypair` called `registerPublicKeyService(pubKey, token)` with no `privJwk` and no `password`. Without a blob in the request, the backend's stale-blob protection nulled the existing `privateKeyJwk` (it detects a new public key with no blob and clears the old one to prevent mismatches). Next login had no blob to recover from → generated another fresh key.
+
+**Fix — three parts:**
+1. `POST /auth/verify-password` backend endpoint: authenticated, rate-limited, bcrypt-checks the supplied password, returns 200 or 401. Does not modify `failedLoginAttempts`.
+2. `generateAndRegisterKeypair` now requires a `password: string`, verifies it against the endpoint before touching any key material, then passes `privJwk` + `password` to `registerPublicKeyService` so the blob is always encrypted and saved.
+3. KeyManager confirm dialog now has a mandatory password field. "Generate anyway" is disabled until the field is non-empty; `handleConfirmGenerate` has a hard early-exit guard; the button's `disabled` prop also enforces it. Password is required for both the "replace existing" and "generate fresh" paths.
+
+**Pattern:** Any security-sensitive operation that writes to the server must carry all required data. Partial registration (public key without blob) left the system in a state that looked valid but broke cross-device recovery. The backend stale-blob protection was working correctly — the bug was in the caller not sending what was needed.
+
+**Key question:** Why is a `POST /auth/verify-password` endpoint better than re-using `POST /auth/login` for verification? (Answer: login generates and returns a new JWT — unnecessary side effect. A dedicated verify endpoint does one thing. It also doesn't update `failedLoginAttempts` since the user is already proven authenticated via the existing JWT.)
+
+---
+
+### Bug 6 — Cross-provider unread indicator missing + conversations mixing in wrong tab
+
+**Symptom A:** Provider pill showed no unread dot for the inactive provider even when it had unread messages.
+
+**Root cause A:** `useConversations.loadConversations` called `setConversations(parsed.data)` — replacing the entire array with only the active provider's conversations. The pill's `pillHasUnread` check searched the array for the inactive provider and never found anything.
+
+**Fix A:** Merge by provider instead of replace:
+```typescript
+setConversations((prev) => [
+  ...prev.filter((c) => c.provider !== currentProvider),
+  ...parsed.data,
+]);
+```
+All providers' conversations now coexist in the array. Load all providers on login and on every poll (silently, `showLoading = false`).
+
+**Symptom B (regression from Fix A):** ChatsPage showed conversations from all providers mixed together.
+
+**Root cause B:** `ChatsPage` received the unfiltered `convHook.conversations` (now containing all providers).
+
+**Fix B:** Filter by active provider before passing to ChatsPage. Also suppress `lastDirection` for the currently open conversation at render time so the poll can't re-light the unread dot while the chat is in view:
+```typescript
+convHook.conversations
+  .filter((c) => c.provider === provider)
+  .map((c) => chatOpen && c.chatId === selectedChatId ? { ...c, lastDirection: undefined } : c)
+```
+
+**Pattern:** When you expand what a shared state array contains, audit every consumer of that array. `convHook.conversations` was consumed in two places with different expectations — the pill needed all providers, ChatsPage needed only the active one. The right fix was: keep all in state, filter at the point of use.
+
+---
+
 ## Instructions for Future Claude Sessions
 
 **Context:** Grace is a WBS bootcamp graduate (Express/React/JWT auth known) with strong Flutter background. Guided walkthrough of `/Users/grace64/ShadowApp/crypt` — TypeScript messaging app with E2E encryption, Telegram MTProto, Socket.IO, MongoDB. Project deadline: 2026-06-24.
