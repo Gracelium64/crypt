@@ -45,9 +45,6 @@ export default function ConnectTelegram({ token, onConnected, onDisconnected, re
 
   const [busy, setBusy] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState(false);
-  const [resetDone, setResetDone] = useState<number | null>(null);
-  const [resetError, setResetError] = useState<string | null>(null);
 
   // Restore bot mode if a pending link is recovered from sessionStorage
   useEffect(() => {
@@ -194,23 +191,6 @@ export default function ConnectTelegram({ token, onConnected, onDisconnected, re
     }
   };
 
-  // ── Reset other sessions ─────────────────────────────────────────────────
-
-  const resetOtherSessions = async () => {
-    setBusy(true);
-    setResetConfirm(false);
-    setResetError(null);
-    setResetDone(null);
-    try {
-      const data = await apiJson("/telegram/direct/reset-sessions", { method: "POST" }, token);
-      setResetDone(data.cleared ?? 0);
-    } catch (err: unknown) {
-      setResetError(err instanceof Error ? err.message : "Failed to reset sessions");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // ── Disconnect ────────────────────────────────────────────────────────────
 
   const disconnect = async () => {
@@ -249,36 +229,10 @@ export default function ConnectTelegram({ token, onConnected, onDisconnected, re
         </div>
         <div className="ctg-connected-actions">
           <span className="chip green">Active</span>
-          <button className="btn-ghost btn-sm" type="button" onClick={() => setResetConfirm(true)} disabled={busy}>
-            Reset other sessions
-          </button>
           <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
             Disconnect
           </button>
         </div>
-
-      {resetError && <div className="ctg-error">{resetError}</div>}
-      {resetDone !== null && (
-        <div className="ctg-hint">Cleared {resetDone} other session(s).</div>
-      )}
-
-      {resetConfirm && (
-        <div className="conn-modal-backdrop" onClick={() => setResetConfirm(false)}>
-          <div className="conn-modal" onClick={(e) => e.stopPropagation()}>
-            <p className="conn-modal-msg">
-              Reset all other Telegram sessions for this account?
-            </p>
-            <div className="conn-modal-actions">
-              <button className="btn-danger" type="button" onClick={() => void resetOtherSessions()} disabled={busy}>
-                Yes, reset
-              </button>
-              <button className="btn-ghost" type="button" onClick={() => setResetConfirm(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {disconnectConfirm && (
         <div className="conn-modal-backdrop" onClick={() => setDisconnectConfirm(false)}>
