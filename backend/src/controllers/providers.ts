@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import crypto from "node:crypto";
 import { Message, Link, ProviderConnection, Key, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName, logEvent } from "#services";
+import { isMarkedCiphertext, broadcastMessage, downloadAndUploadWhatsappMedia, sendToProvider, joinPersonName, logEvent, encryptTextAtRest } from "#services";
 import { env } from "#config";
 import { telegramInboundSchema, whatsappInboundSchema } from "#schemas";
 
@@ -175,7 +175,7 @@ export const telegramWebhook: RequestHandler = async (req, res) => {
     chatId: String(msg.chat.id),
     providerMessageId: String(msg.message_id),
     deliveryStatus: "sent",
-    encryptedText: incomingRaw,
+    encryptedText: isMarkedCiphertext(incomingRaw) ? incomingRaw : encryptTextAtRest(incomingRaw),
     bodyOmitted: false,
     attachments: [],
   });
@@ -324,7 +324,6 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
           }
         }
 
-        const isEncrypted = isMarkedCiphertext(incomingRaw);
         const created = await Message.create({
           provider: "whatsapp",
           direction: "inbound",
@@ -333,8 +332,8 @@ export const whatsappWebhook: RequestHandler = async (req, res) => {
           chatId: msg.from,
           providerMessageId: msg.id,
           deliveryStatus: "sent",
-          encryptedText: isEncrypted ? incomingRaw : "",
-          bodyOmitted: !isEncrypted,
+          encryptedText: isMarkedCiphertext(incomingRaw) ? incomingRaw : encryptTextAtRest(incomingRaw),
+          bodyOmitted: false,
           attachments,
         });
 

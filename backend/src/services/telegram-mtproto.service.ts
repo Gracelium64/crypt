@@ -5,7 +5,7 @@ import type { NewMessageEvent } from "telegram/events/NewMessage.js";
 import { Api } from "telegram";
 import { Message, ProviderConnection, TelegramSession, Key, Account } from "#models";
 import { broadcastMessage } from "./realtime.service.js";
-import { encryptText, decryptMarkedText } from "./crypto.service.js";
+import { encryptText, decryptMarkedText, encryptTextAtRest, isMarkedCiphertext } from "./crypto.service.js";
 import { logEvent } from "./logger.service.js";
 import { env } from "../config/env.js";
 
@@ -75,7 +75,7 @@ function subscribeToMessages(client: TelegramClient, accountId: string): void {
         to: ownerConn?.providerChatId ?? accountId,
         chatId: fromId,
         deliveryStatus: "sent",
-        encryptedText: text,
+        encryptedText: isMarkedCiphertext(text) ? text : encryptTextAtRest(text),
         bodyOmitted: false,
         attachments: [],
       });
@@ -182,7 +182,7 @@ export async function requestPhoneCode(
 
   const codeType: "app" | "sms" = result?.isCodeViaApp ? "app" : "sms";
 
-  console.log("[MTProto] code sent to", phoneNumber, "via", codeType);
+  console.log("[MTProto] code sent to", phoneNumber.replace(/(\+?\d{1,3})\d+(\d{2})$/, "$1***$2"), "via", codeType);
   pendingAuth.set(accountId, { client, phoneCodeHash, phoneNumber });
   return { codeType };
 }
@@ -219,7 +219,7 @@ export async function verifyPhoneCode(
 
   await TelegramSession.findOneAndUpdate(
     { accountId },
-    { accountId, phoneNumber, sessionString, active: true },
+    { accountId, phoneNumber: encryptTextAtRest(phoneNumber), sessionString, active: true },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
@@ -321,7 +321,10 @@ interface PendingQr {
   step: "qr" | "2fa" | "done" | "error";
   twoFaResolver?: (password: string) => void;
   error?: string;
+  cleanupTimer?: ReturnType<typeof setTimeout>;
 }
+
+const QR_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 const pendingQr = new Map<string, PendingQr>();
 
 export function getQrLoginStatus(accountId: string): { token: string; step: string; error?: string } {
@@ -345,6 +348,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
 
   const existing = pendingQr.get(accountId);
   if (existing) {
+    if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
     try { await existing.client.disconnect(); } catch { /* ignore */ }
     pendingQr.delete(accountId);
   }
@@ -358,6 +362,15 @@ export async function startQrLogin(accountId: string): Promise<void> {
 
   const entry: PendingQr = { client, token: "", step: "qr" };
   pendingQr.set(accountId, entry);
+
+  entry.cleanupTimer = setTimeout(async () => {
+    const e = pendingQr.get(accountId);
+    if (e && e.step !== "done") {
+      console.log("[MTProto QR] timeout: cleaning up abandoned QR session for", accountId);
+      try { await e.client.disconnect(); } catch { /* ignore */ }
+      pendingQr.delete(accountId);
+    }
+  }, QR_SESSION_TIMEOUT_MS);
 
   void (async () => {
     try {
@@ -373,6 +386,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
           onError: async (err: Error) => {
             console.error("[MTProto QR] error:", err);
             const e = pendingQr.get(accountId);
+            if (e?.cleanupTimer) clearTimeout(e.cleanupTimer);
             if (e) { e.step = "error"; e.error = err.message; }
             return false;
           },
@@ -397,7 +411,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
 
       await TelegramSession.findOneAndUpdate(
         { accountId },
-        { accountId, phoneNumber, sessionString, active: true },
+        { accountId, phoneNumber: encryptTextAtRest(phoneNumber), sessionString, active: true },
         { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
       );
 
@@ -430,11 +444,13 @@ export async function startQrLogin(accountId: string): Promise<void> {
       subscribeToMessages(client, accountId);
 
       const e = pendingQr.get(accountId);
+      if (e?.cleanupTimer) clearTimeout(e.cleanupTimer);
       if (e) e.step = "done";
       console.log("[MTProto QR] auth complete for", accountId);
     } catch (err) {
       console.error("[MTProto QR] auth failed:", err);
       const e = pendingQr.get(accountId);
+      if (e?.cleanupTimer) clearTimeout(e.cleanupTimer);
       if (e) { e.step = "error"; e.error = (err as Error).message; }
     }
   })();

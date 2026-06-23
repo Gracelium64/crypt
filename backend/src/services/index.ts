@@ -9,6 +9,8 @@ export {
   encryptText,
   decryptMarkedText,
   isMarkedCiphertext,
+  encryptTextAtRest,
+  decryptSrvText,
 } from "./crypto.service.js";
 export {
   loadAllMTProtoSessions,

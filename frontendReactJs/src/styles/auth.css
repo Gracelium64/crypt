@@ -21,7 +21,6 @@
   align-items: center;
   padding-top: max(80px, 10vh);
   padding-bottom: max(32px, var(--safe-b));
-  position: relative;
 }
 
 .auth-card {

@@ -119,6 +119,7 @@
 - [ ] Rotate `WEBHOOK_ADMIN_TOKEN`
 - [x] **Swagger UI gated in production** — `NODE_ENV === "production"` gates `/api/openapi.json` and `/api/docs` behind `authenticate`. Set `NODE_ENV=production` in Render env vars (already listed in Section 4). No extra step needed. (Pass 2 Correction, 2026-06-20)
 - [x] **Helmet HTTP headers installed** — `helmet@8.2.0` wired in `server.ts` as first middleware. CSP disabled (Swagger page uses CDN). All other defaults active. (Pass 2 Correction, 2026-06-20)
+- [x] **Server-side at-rest encryption installed** — all plain-text `Message.encryptedText` and `TelegramSession.phoneNumber` encrypted with AES-256-GCM (`[SRV:v1]` prefix) before storage. `DEMO_ENCRYPTION_KEY` must be stable across all backend instances — rotating this key breaks existing encrypted rows and forces users to re-link Telegram. (Refactor Pass 3, 2026-06-23)
 - [ ] Confirm MongoDB Atlas IP allowlist is not wider than necessary
 - [ ] Review CORS_ORIGIN — must not be `*` in production
 
@@ -129,7 +130,7 @@
 - [ ] `GET https://<backend>/api/providers/status` returns 200 (with JWT)
 - [ ] Register a new account via the frontend
 - [ ] Connect Telegram via phone code — verify code arrives in Telegram app; verify Settings shows "Active"
-- [ ] Send a plain message — verify delivery and receipt
+- [ ] Send a plain message — verify delivery and receipt; confirm the timeline shows readable text (not `[SRV:v1]...` ciphertext — backend must decrypt before returning to frontend)
 - [ ] Send a secure message — verify `[CRYPT:v1]` ciphertext in DB and decrypted text on both devices
 - [ ] Receive a message — verify blue unread dot appears in conversation list; verify dot clears on open
 - [ ] Attach an image — verify Cloudinary upload URL appears in message *(WhatsApp skip for MVP)*

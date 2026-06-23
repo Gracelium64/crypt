@@ -12,6 +12,7 @@ Core features
   - **Via CryptBot** (`LINK <code>` flow): sends a link code to the bot, routes messages through the bot rather than direct user-to-user
 - Provider connections (store encrypted provider tokens server-side)
 - Compose and send messages (plain or secure). Secure messages: client-side ECDH → HKDF → AES-GCM, ciphertexts are prefixed with `[CRYPT:v1]`.
+- Server-side at-rest encryption (`[SRV:v1]`): all plain-text `Message` bodies and `TelegramSession.phoneNumber` are encrypted in MongoDB with AES-256-GCM before storage; backend decrypts on every read path — frontend never receives `[SRV:v1]` ciphertext. (Refactor Pass 3, 2026-06-23)
 - Attachment handling: multipart upload via Formidable + Cloudinary hosting; encrypted attachments are uploaded as raw encrypted blobs and marked as `?crypt=1`.
 - Realtime: Socket.IO push for new messages via per-account rooms (`join:account`); polling fallback (10s when disconnected, 30s safety net when connected).
 - Unread indicators: blue dot and bold name per conversation in the chat list; blue dot on provider pill when the non-active provider has unread messages. Indicators clear immediately on conversation open (optimistic local update, no server round-trip).

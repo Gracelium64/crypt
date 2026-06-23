@@ -23,6 +23,7 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
+  background: var(--bg, #0e0b14);
 }
 
 /* ── CSS variables — Amethyst (default theme) ── */

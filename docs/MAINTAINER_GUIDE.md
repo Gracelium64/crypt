@@ -1,10 +1,10 @@
 # Maintainer Guide
 
-_Last updated: 2026-06-21 (after prod/blue deployment and debug session)_
+_Last updated: 2026-06-23 (after Refactor Pass 3 — server-side at-rest encryption)_
 
 ## What This System Does
 
-Crypt Companion is a secure messaging companion app that ingests provider messages (Telegram MTProto + Bot API, WhatsApp Cloud API), applies optional E2E encryption/decryption logic, stores events in MongoDB, and pushes updates to web clients in realtime. Authentication uses JWT Bearer tokens with per-account Socket.IO rooms.
+Crypt Companion is a secure messaging companion app that ingests provider messages (Telegram MTProto + Bot API, WhatsApp Cloud API), applies optional E2E encryption/decryption logic, stores events in MongoDB, and pushes updates to web clients in realtime. Authentication uses JWT Bearer tokens with per-account Socket.IO rooms. All plain-text message bodies and `TelegramSession.phoneNumber` are encrypted at rest with AES-256-GCM (`[SRV:v1]` prefix, keyed from `DEMO_ENCRYPTION_KEY`); the backend decrypts on every read path before returning data to the frontend.
 
 ## Runtime Components
 

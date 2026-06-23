@@ -68,3 +68,48 @@ Nothing in this session was committed to git by Claude — every change below is
 - `README.md` — fixed `cp .env.example` → `cp backend/env.example` (the example file has no leading dot; the old instructions didn't actually work), corrected `JWT_SECRET` from "optional" to required, added the new security hardening items to the feature list, added a pointer to the root-level docs.
 - `docs/SCALABILITY.md` — new, see file for the full writeup (in-memory MTProto session state blocking horizontal scaling, Socket.IO needing a cross-instance adapter, the missing `providerChatId` index, etc.).
 - `planning/LESSON_PLAN.md` — new module appended documenting this session (see Module 21).
+
+---
+
+## 2026-06-23 — Refactor Pass 3: Server-Side At-Rest Encryption
+
+### Security enhancements
+
+**1. `[SRV:v1]` crypto functions — `backend/src/services/crypto.service.ts`, `backend/src/services/index.ts`**
+- What: added `encryptTextAtRest`, `decryptSrvText`, `isSrvCiphertext` (third function dead — no callers). Internal helpers refactored to accept a `prefix` param so both `[CRYPT:v1]` and `[SRV:v1]` paths share one `aesEncrypt`/`aesDecrypt` implementation.
+- Restore: remove the three exports and `SRV_PREFIX` constant; revert `aesEncrypt`/`aesDecrypt` to single-prefix implementations. No data affected.
+
+**2. `TelegramSession.phoneNumber` encrypted on write — `telegram-mtproto.service.ts`**
+- What: `encryptTextAtRest(phoneNumber)` at the phone-code upsert (line 222) and QR login upsert (line 400). Read path in `getTelegramStatus` (`telegram.ts`) applies `decryptSrvText` then the masking regex → `+1***45`.
+- **Data note:** Existing `TelegramSession` rows written before this deploy have a plain-text `phoneNumber`. `decryptSrvText` is a no-op for non-`[SRV:v1]` strings — old rows still work but phone number is shown unmasked until the session is re-linked.
+- Restore: revert the two write sites in `telegram-mtproto.service.ts` and the `decryptSrvText` call in `telegram.ts`.
+
+**3. Inbound message bodies encrypted on write — `backend/src/controllers/providers.ts`**
+- What: Telegram inbound (~line 178) and WhatsApp inbound (~line 335) both now apply `encryptTextAtRest` unless the message is already `[CRYPT:v1]`. **Behavior change:** WhatsApp plain messages changed from `bodyOmitted: true, encryptedText: ""` to `bodyOmitted: false, encryptedText: [SRV:v1]...`. Plain WhatsApp messages now show content in the UI.
+- **Data note:** Pre-existing plain WhatsApp messages in the DB have `bodyOmitted: true`, `encryptedText: ""` — they still display as "(content omitted)". Only new inbound messages show content.
+- Restore: revert `providers.ts` lines ~178 and ~335.
+
+**4. Outbound messages encrypted on write; read path decrypted — `backend/src/controllers/messages.ts`**
+- What: `rawText`/`storedText` split in `sendMessage` (lines 145–146). All three `Message.create` calls use `storedText`. `getMessages` and `getConversations` both apply `decryptSrvText` map before response. `sendMessage` 201 response also applies `decryptSrvText` (see bug fix 7 below).
+- Restore: revert lines 145–146 (split), 34 (`getMessages` map), 53 (`getConversations` map), 259 (response).
+
+**5. Realtime emit decrypted — `backend/src/services/realtime.service.ts`**
+- What: `decryptSrvText` applied to `message.encryptedText` in `broadcastMessage` before Socket.IO emit. Import taken directly from `./crypto.service.js` (not `#services`) to avoid circular dependency.
+- Restore: revert line 37; remove the direct import.
+
+### Bug fixes (found during Pass 3 audit)
+
+**6. Missed write site: `subscribeToMessages` — `backend/src/services/telegram-mtproto.service.ts`**
+- What: inbound MTProto messages (`NewMessage` handler) were stored plain even after steps 1–5. Added `isMarkedCiphertext` to import; applied guard at line 78: `encryptedText: isMarkedCiphertext(text) ? text : encryptTextAtRest(text)`.
+- Functional impact: none (pre-existing plain values pass through `decryptSrvText` unchanged on read). Security impact: MTProto inbound messages now encrypted at rest.
+
+**7. `sendMessage` 201 response leaked ciphertext — `backend/src/controllers/messages.ts`**
+- What: POST `/api/messages/send` 201 response returned `message.encryptedText` as `[SRV:v1]...` ciphertext. Fixed by applying `{ ...message.toObject(), encryptedText: decryptSrvText(message.encryptedText ?? "") }` in the response (line 259).
+- Functional impact: none — `useSend.ts` discards the 201 body and calls `loadMessages` post-send.
+
+### Documentation
+
+- `CRYPT_SPECS.md` — updated last-verified date to 2026-06-23; added `[SRV:v1]` at-rest encryption subsection; noted `bodyOmitted` behavior change; noted two bug fixes.
+- `REFACTOR/PASS4/REFACTOR_PASS_4_NOTES.md` — created; documents deferred items: phone number in server log (Item 1), `isSrvCiphertext` dead code (Item 2), `CODEBOOK.md` developer handbook (Item 3).
+- `planning/LESSON_PLAN.md` — Module 24 added documenting this pass.
+- All other docs (`README.md`, `docs/FUNCTIONALITY.md`, `docs/MAINTAINER_GUIDE.md`, `docs/PRODUCTION_CHECKLIST.md`, `planning/PROJECT_ROADMAP.md`) updated to reflect Pass 3.

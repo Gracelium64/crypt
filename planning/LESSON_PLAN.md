@@ -1592,6 +1592,105 @@ Fix: `process.env.NODE_ENV === "production"` gates both routes behind `authentic
 
 ---
 
+## Module 24 — Refactor Pass 3: Server-Side At-Rest Encryption (`[SRV:v1]`)
+
+A full audit and implementation pass adding AES-256-GCM at-rest encryption to all plain-text PII fields stored in MongoDB. Full detail in `REFACTOR/PASS3/REFACTOR_PASS_3_PLAN.md` and `REFACTOR/PASS3/REFACTOR_PASS_3_PROGRESS.md`. This module covers the design decisions, two bugs found during the audit, and the key patterns established.
+
+---
+
+### Part A — The gap: what lived in MongoDB in plain text before Pass 3
+
+After Pass 1 (MTProto session strings encrypted) and Pass 2 (CSS + security), MongoDB still held two categories of plain-text sensitive data:
+
+- `TelegramSession.phoneNumber` — the user's real phone number in clear text
+- `Message.encryptedText` for all **plain-text** messages — stored readable. E2E ciphertexts (`[CRYPT:v1]`) were already opaque, but any non-E2E message (inbound Telegram bot, inbound WhatsApp, outbound plain reply) was readable to anyone with DB read access.
+
+The AES-256-GCM implementation already existed (from Pass 1 C1), `DEMO_ENCRYPTION_KEY` was already in use, and the `[CRYPT:v1]` prefix pattern was already established. Pass 3 was a systematic application of the same approach to the remaining plain-text fields.
+
+---
+
+### Part B — Design decision: `[SRV:v1]` prefix, distinct from `[CRYPT:v1]`
+
+The most important design call: use a **different prefix** for server-side at-rest encryption rather than reusing `[CRYPT:v1]`.
+
+**Why it matters:** `[CRYPT:v1]` is a client-side secret — only the two ECDH parties can decrypt it; the server never tries. If a message's `encryptedText` starts with `[CRYPT:v1]`, the backend must pass it through unchanged. `decryptSrvText` is a **no-op for `[CRYPT:v1]` values** — it only acts on strings starting with `[SRV:v1]`.
+
+Read the three functions added in Pass 3:
+
+```typescript
+export const encryptTextAtRest = (plainText: string): string => aesEncrypt(plainText, SRV_PREFIX);
+export const decryptSrvText = (rawText: string): string => aesDecrypt(rawText, SRV_PREFIX);
+// isSrvCiphertext removed in Pass 4 (2026-06-23) — was dead code, never called
+```
+
+`aesDecrypt` already had the guard: `if (!rawText.startsWith(prefix)) return rawText;` — so `decryptSrvText` on a `[CRYPT:v1]` string returns it unchanged. Safe passthrough by construction, no prefix confusion possible.
+
+---
+
+### Part C — The four write sites
+
+Pass 3 covered four write paths (plus one missed that required a bug fix — see Part D):
+
+**1. `TelegramSession.phoneNumber`** (`telegram-mtproto.service.ts`): `encryptTextAtRest(phoneNumber)` at both the phone-code upsert (line 222) and the QR login upsert (line 400). The read path in `getTelegramStatus` (`telegram.ts`) decrypts and masks: `decryptSrvText(session.phoneNumber).replace(...)` → user sees `+1***45`, never the raw ciphertext.
+
+**2. Inbound Telegram messages** (`providers.ts` ~line 178): the existing `isMarkedCiphertext` guard was extended — `isMarkedCiphertext(incomingRaw) ? incomingRaw : encryptTextAtRest(incomingRaw)`. Already-E2E messages pass through; plain text gets encrypted at rest.
+
+**3. Inbound WhatsApp messages** (`providers.ts` ~line 335): same guard. **Behavior change:** previously, plain WhatsApp messages were discarded (`bodyOmitted: true`, `encryptedText: ""`). Pass 3 stores them encrypted at rest (`bodyOmitted: false`). WhatsApp plain messages now show their actual content in the UI instead of "(content omitted for privacy)".
+
+**4. Outbound messages** (`messages.ts` `sendMessage`): a `rawText`/`storedText` split was added:
+
+```typescript
+const rawText = payload.encryptedText ?? payload.text ?? "";
+const storedText = isMarkedCiphertext(rawText) ? rawText : encryptTextAtRest(rawText);
+```
+
+All three `Message.create` calls use `storedText`. The provider send functions (`sendFn`, `sendToProvider`) receive `rawText` — the provider gets plain text, the DB gets ciphertext.
+
+**Read path (all three locations):** `getMessages` and `getConversations` map `decryptSrvText` over results; `broadcastMessage` in `realtime.service.ts` decrypts before the Socket.IO emit. The frontend never sees a `[SRV:v1]` string.
+
+---
+
+### Part D — Two bugs found during the Pass 3 audit
+
+**Bug 1 — Missed write site: `subscribeToMessages`**
+
+The Pass 3 plan covered the bot webhook path (`providers.ts`) and the outbound path (`messages.ts`) but missed `telegram-mtproto.service.ts`'s `subscribeToMessages` handler — the path that stores inbound Telegram messages received via **direct MTProto connection**. These messages were stored with `encryptedText: text` (plain text) even after Pass 3 was declared complete.
+
+Fix — import `isMarkedCiphertext` and apply the same guard:
+
+```typescript
+encryptedText: isMarkedCiphertext(text) ? text : encryptTextAtRest(text),
+```
+
+Functional impact: none (`decryptSrvText` is a no-op on non-`[SRV:v1]` values — old plain messages still display correctly). Security: all inbound MTProto messages now encrypted at rest.
+
+**Pattern:** Any time a refactor adds encryption "at all message write paths," enumerate every code path that calls `Message.create` — not just the ones named in the plan. There were four paths; the plan named three.
+
+**Bug 2 — `sendMessage` 201 response returned ciphertext**
+
+`messages.ts` returned `{ data: { message } }` where `message.encryptedText` was a `[SRV:v1]` blob. Fixed by applying `decryptSrvText` in the response:
+
+```typescript
+res.status(201).json({ data: { message: { ...message.toObject(), encryptedText: decryptSrvText(message.encryptedText ?? "") } } });
+```
+
+Functional impact: none — `useSend.ts` discards the 201 body and calls `loadMessages` post-send. But every other read endpoint decrypted correctly; this response was the exception.
+
+**Pattern:** Wherever a DB document is returned directly in an API response, check whether its fields need decryption. The `GET /api/messages` read path was correctly decrypting; the write-response path in `POST /api/messages/send` was not.
+
+---
+
+### Key questions for this module
+
+1. `decryptSrvText` is called on `[CRYPT:v1]` messages and returns them unchanged. Why does this work? What does `aesDecrypt` do when the string doesn't start with the expected prefix?
+2. The write guards all use `isMarkedCiphertext(raw) ? raw : encryptTextAtRest(raw)`. Why this guard? What would happen if `encryptTextAtRest` was called unconditionally on a message that is already `[SRV:v1]` ciphertext?
+3. The WhatsApp `bodyOmitted` change is a behavior change, not just a security change. What did the UI show before, and what does it show now? Which component consumes `message.bodyOmitted`?
+4. `sendFn(rawText)` uses `rawText` instead of `storedText`. What would happen if `storedText` (the `[SRV:v1]` blob) was sent to the Telegram API instead?
+5. Bug 1 was in `subscribeToMessages` — a handler only active when the user has a live gramjs session. Which users' messages would have been stored in plain text even after the initial Pass 3 deploy, and which would have been encrypted?
+6. The `sendMessage` 201 response bug had "no functional impact" because `useSend.ts` discards the body. Why is fixing it still the right call?
+
+---
+
 **Context:** Project deadline is 2026-06-24. This module replaces rebuild exercises in the pre-deadline phase. Goal: make the UI polished enough to submit.
 
 ### Before touching any component, do a full UI audit:
@@ -1688,6 +1787,8 @@ MODULE STATUS:
 [x*] Module 20 - Docker & containerization (is it needed?) — executed 2026-06-16, SKIM PENDING
 [x*] Module 21 - Security & redundancy hardening session — executed 2026-06-16, CORE REVIEW PENDING
 [x*] Module 23 - Security remediation: router-level authorization — executed 2026-06-20, CORE REVIEW PENDING
+[x*] Module 24 - Refactor Pass 3: server-side at-rest encryption (`[SRV:v1]`) — executed 2026-06-23, NOT YET REVIEWED
+[x*] Module 25 - Refactor Pass 4 (partial): phone number log redacted, `isSrvCiphertext` dead code removed — executed 2026-06-23, NOT YET REVIEWED
 
 [x*] = work was done by Claude under Grace's supervision and documented, but NOT yet reviewed/understood by Grace. Do not treat as taught until the review pass happens.
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)

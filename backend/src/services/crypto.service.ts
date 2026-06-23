@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { env } from "../config/env.js";
 
 const MARKER_PREFIX = "[CRYPT:v1]";
+const SRV_PREFIX = "[SRV:v1]";
 
 const buildKey = () => {
   const keyMaterial = env.DEMO_ENCRYPTION_KEY;
@@ -10,7 +11,7 @@ const buildKey = () => {
 
 const key = buildKey();
 
-export const encryptText = (plainText: string): string => {
+const aesEncrypt = (plainText: string, prefix: string): string => {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([
@@ -19,27 +20,25 @@ export const encryptText = (plainText: string): string => {
   ]);
   const authTag = cipher.getAuthTag();
   const payload = Buffer.concat([iv, authTag, encrypted]).toString("base64");
-  return `${MARKER_PREFIX}${payload}`;
+  return `${prefix}${payload}`;
 };
 
-export const decryptMarkedText = (rawText: string): string => {
-  if (!rawText.startsWith(MARKER_PREFIX)) {
-    return rawText;
-  }
-
-  const payload = Buffer.from(rawText.slice(MARKER_PREFIX.length), "base64");
+const aesDecrypt = (rawText: string, prefix: string): string => {
+  if (!rawText.startsWith(prefix)) return rawText;
+  const payload = Buffer.from(rawText.slice(prefix.length), "base64");
   const iv = payload.subarray(0, 12);
   const authTag = payload.subarray(12, 28);
   const encryptedData = payload.subarray(28);
-
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(authTag);
-  const decrypted = Buffer.concat([
-    decipher.update(encryptedData),
-    decipher.final(),
-  ]);
-  return decrypted.toString("utf8");
+  return Buffer.concat([decipher.update(encryptedData), decipher.final()]).toString("utf8");
 };
 
-export const isMarkedCiphertext = (value: string) =>
-  value.startsWith(MARKER_PREFIX);
+// Client-side E2E marker — used for messages encrypted by the frontend
+export const encryptText = (plainText: string): string => aesEncrypt(plainText, MARKER_PREFIX);
+export const decryptMarkedText = (rawText: string): string => aesDecrypt(rawText, MARKER_PREFIX);
+export const isMarkedCiphertext = (value: string) => value.startsWith(MARKER_PREFIX);
+
+// Server-side at-rest marker — used for plain inbound/outbound message bodies and phone numbers
+export const encryptTextAtRest = (plainText: string): string => aesEncrypt(plainText, SRV_PREFIX);
+export const decryptSrvText = (rawText: string): string => aesDecrypt(rawText, SRV_PREFIX);

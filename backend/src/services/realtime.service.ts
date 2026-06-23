@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import type { MessageDocument } from "#models";
 import { parseOrigins } from "#config";
+import { decryptSrvText } from "./crypto.service.js";
 
 let io: Server | null = null;
 
@@ -33,7 +34,7 @@ export const broadcastMessage = (message: MessageDocument) => {
     to: message.to,
     chatId: message.chatId,
     deliveryStatus: message.deliveryStatus,
-    encryptedText: message.encryptedText,
+    encryptedText: decryptSrvText(message.encryptedText ?? ""),
     bodyOmitted: Boolean(message.bodyOmitted),
     attachments: message.attachments,
     createdAt: message.createdAt,
