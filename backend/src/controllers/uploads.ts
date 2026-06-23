@@ -74,7 +74,9 @@ export const uploadFormidable: RequestHandler = (req, res, next) => {
       return;
     }
 
-    const file = (files as Record<string, unknown>)?.file;
+    const rawFile = (files as Record<string, unknown>)?.file;
+    // formidable v3 returns files as arrays; unwrap the first element
+    const file = Array.isArray(rawFile) ? rawFile[0] : rawFile;
     if (!file) {
       next(new Error("Missing file field", { cause: { status: 400 } }));
       return;
