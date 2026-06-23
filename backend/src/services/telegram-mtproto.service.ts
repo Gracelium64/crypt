@@ -12,6 +12,15 @@ import { env } from "../config/env.js";
 const API_ID = env.TELEGRAM_API_ID ?? 0;
 const API_HASH = env.TELEGRAM_API_HASH ?? "";
 
+// gramJS calls console.error(e) directly for every long-poll TIMEOUT — these are normal
+// and not actionable. Filter them before they reach the log.
+const _origConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => {
+  const first = args[0];
+  if (first instanceof Error && first.message === "TIMEOUT" && first.stack?.includes("updates.js")) return;
+  _origConsoleError(...args);
+};
+
 // Derive the CryptBot's own Telegram user ID from the bot token ("id:hash")
 // so we can filter out bot-echoed messages in subscribeToMessages.
 const BOT_USER_ID = env.TELEGRAM_BOT_TOKEN?.split(":")[0] ?? "";
@@ -448,10 +457,13 @@ export async function startQrLogin(accountId: string): Promise<void> {
       if (e) e.step = "done";
       console.log("[MTProto QR] auth complete for", accountId);
     } catch (err) {
-      console.error("[MTProto QR] auth failed:", err);
+      const msg = (err as Error)?.message ?? "";
+      if (!msg.includes("Cannot send requests while disconnected")) {
+        console.error("[MTProto QR] auth failed:", err);
+      }
       const e = pendingQr.get(accountId);
       if (e?.cleanupTimer) clearTimeout(e.cleanupTimer);
-      if (e) { e.step = "error"; e.error = (err as Error).message; }
+      if (e) { e.step = "error"; e.error = msg; }
     }
   })();
 }
