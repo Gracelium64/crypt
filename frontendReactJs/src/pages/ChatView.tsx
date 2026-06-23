@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+// import { useRef, useState } from "react";
+import { useState } from "react";
 import Timeline from "@/components/Timeline";
 import "../styles/chat.css";
 import { deriveAesGcmKey } from "@/lib/crypto";
@@ -46,8 +47,8 @@ export default function ChatView({
   text,
   setText,
   file,
-  setFile,
-  filePreview,
+  // setFile,
+  // filePreview,
   replyMode,
   setReplyMode,
   sendBusy,
@@ -57,25 +58,37 @@ export default function ChatView({
   onDelete,
   onSend,
 }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // const fileInputRef = useRef<HTMLInputElement>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const removeFile = () => {
-    setFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  // const removeFile = () => {
+  //   setFile(null);
+  //   if (fileInputRef.current) fileInputRef.current.value = "";
+  // };
 
   return (
     <>
       <header className="app-header">
-        <button className="header-back" type="button" onClick={onBack} aria-label="Back">‹</button>
+        <button
+          className="header-back"
+          type="button"
+          onClick={onBack}
+          aria-label="Back"
+        >
+          ‹
+        </button>
         <div className="header-title">
           <strong>
-            {selectedConversation?.counterpartName || selectedConversation?.counterpart || selectedChatId}
+            {selectedConversation?.counterpartName ||
+              selectedConversation?.counterpart ||
+              selectedChatId}
           </strong>
           <span>{providerMeta[provider].label}</span>
         </div>
-        <span className={`header-status${isRealtime ? " live" : ""}`} title={isRealtime ? "Live" : "Polling"} />
+        <span
+          className={`header-status${isRealtime ? " live" : ""}`}
+          title={isRealtime ? "Live" : "Polling"}
+        />
         {deleteBusy ? (
           <span className="spinner" />
         ) : confirmingDelete ? (
@@ -84,7 +97,10 @@ export default function ChatView({
             <button
               className="btn-sm btn-danger"
               type="button"
-              onClick={() => { setConfirmingDelete(false); onDelete(); }}
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDelete();
+              }}
             >
               Yes
             </button>
@@ -175,14 +191,21 @@ export default function ChatView({
                   onSend();
                 }
               }}
-              placeholder={selectedChatId ? "Type a message…" : "Pick a chat first"}
+              placeholder={
+                selectedChatId ? "Type a message…" : "Pick a chat first"
+              }
               disabled={!selectedChatId}
             />
             <button
               className="composer-send"
               type="button"
               onClick={onSend}
-              disabled={sendBusy || !selectedChatId || (!text && !file) || !selectedProviderStatus?.backendReady}
+              disabled={
+                sendBusy ||
+                !selectedChatId ||
+                (!text && !file) ||
+                !selectedProviderStatus?.backendReady
+              }
               aria-label="Send"
             >
               {sendBusy ? <span className="spinner" /> : "➤"}
