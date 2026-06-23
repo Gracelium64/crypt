@@ -105,8 +105,11 @@ export const uploadFormidable: RequestHandler = (req, res, next) => {
       }
 
       const buffer = await fs.readFile(filePath);
-      const isEncryptedFlag =
-        fieldsObj?.encrypted === "1" || fieldsObj?.encrypted === "true";
+      // formidable v3 returns fields as arrays; normalise to scalar before comparing
+      const encryptedVal = Array.isArray(fieldsObj?.encrypted)
+        ? fieldsObj.encrypted[0]
+        : fieldsObj?.encrypted;
+      const isEncryptedFlag = encryptedVal === "1" || encryptedVal === "true";
 
       if (resourceType !== "raw") {
         const detected = await fileTypeFromBuffer(buffer);
