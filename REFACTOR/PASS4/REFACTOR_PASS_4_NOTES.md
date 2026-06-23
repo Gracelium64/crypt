@@ -4,44 +4,32 @@ Items surfaced during Pass 3 audit (2026-06-23) that are deferred to Pass 4.
 
 ---
 
-## Item 1 — Plain phone number in server log
+## Item 1 — Plain phone number in server log ✓ DONE (2026-06-23)
 
 **File:** `backend/src/services/telegram-mtproto.service.ts`
 **Line:** 185
 
+**Was:**
 ```typescript
 console.log("[MTProto] code sent to", phoneNumber, "via", codeType);
 ```
 
-**Issue:** The phone number is logged in plain text to stdout before it is encrypted and written to the DB. Pass 3 encrypts the phone number at rest, but this log line was not updated and still leaks it to server logs.
-
-Lines 174–176 nearby also log debug info about the `sendCode` response — these are fine (no PII).
-
-**Fix for Pass 4:** Replace with a redacted form, e.g.:
-
-```typescript
-console.log("[MTProto] code sent via", codeType);
-```
-
-or keep the number but redact it:
-
+**Now:**
 ```typescript
 console.log("[MTProto] code sent to", phoneNumber.replace(/(\+?\d{1,3})\d+(\d{2})$/, "$1***$2"), "via", codeType);
 ```
 
-**Why deferred:** Retained for debugging during the current test phase.
+**Result:** Phone number is redacted in server logs (e.g., `+1***45`). PII no longer leaks to stdout. Verified by reading line 185 of the file post-edit.
 
 ---
 
-## Item 2 — `isSrvCiphertext` is dead code
+## Item 2 — `isSrvCiphertext` is dead code ✓ DONE (2026-06-23)
 
 **Files:**
-- `backend/src/services/crypto.service.ts` line 45
-- `backend/src/services/index.ts` line 14
+- `backend/src/services/crypto.service.ts` — export removed
+- `backend/src/services/index.ts` — re-export removed
 
-**Issue:** `isSrvCiphertext` was added symmetrically alongside `encryptTextAtRest` and `decryptSrvText` in Pass 3 Step 1, but it is never called anywhere in the backend or frontend. Confirmed by exhaustive grep across the entire project (excluding `node_modules` and `dist`).
-
-**Fix for Pass 4:** Remove the export from `crypto.service.ts` and the re-export from `services/index.ts` — unless a future read path needs it (e.g., a conditional decrypt guard).
+**Result:** `isSrvCiphertext` has been deleted from both files. Confirmed absent from the entire codebase (`backend/src` + `frontendReactJs/src`) via exhaustive grep.
 
 ---
 

@@ -164,3 +164,4 @@ Implemented now:
 - Login lockout after 8 consecutive failed attempts (15-minute lockout)
 - Upload validation: 10MB size cap and a MIME allow-list on plain (unencrypted) attachments — encrypted attachments are exempt since they're ciphertext, not a real file type
 - Server-side at-rest encryption (`[SRV:v1]`): all plain-text `Message` bodies and `TelegramSession.phoneNumber` encrypted with AES-256-GCM before MongoDB storage; backend decrypts on every read path — frontend never sees `[SRV:v1]` ciphertext
+- Pass 4 (2026-06-23): phone number redacted in server logs (`+1***45`); `isSrvCiphertext` dead code removed

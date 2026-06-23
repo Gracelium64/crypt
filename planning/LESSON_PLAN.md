@@ -1620,7 +1620,7 @@ Read the three functions added in Pass 3:
 ```typescript
 export const encryptTextAtRest = (plainText: string): string => aesEncrypt(plainText, SRV_PREFIX);
 export const decryptSrvText = (rawText: string): string => aesDecrypt(rawText, SRV_PREFIX);
-export const isSrvCiphertext = (value: string) => value.startsWith(SRV_PREFIX); // currently dead
+// isSrvCiphertext removed in Pass 4 (2026-06-23) — was dead code, never called
 ```
 
 `aesDecrypt` already had the guard: `if (!rawText.startsWith(prefix)) return rawText;` — so `decryptSrvText` on a `[CRYPT:v1]` string returns it unchanged. Safe passthrough by construction, no prefix confusion possible.
@@ -1788,6 +1788,7 @@ MODULE STATUS:
 [x*] Module 21 - Security & redundancy hardening session — executed 2026-06-16, CORE REVIEW PENDING
 [x*] Module 23 - Security remediation: router-level authorization — executed 2026-06-20, CORE REVIEW PENDING
 [x*] Module 24 - Refactor Pass 3: server-side at-rest encryption (`[SRV:v1]`) — executed 2026-06-23, NOT YET REVIEWED
+[x*] Module 25 - Refactor Pass 4 (partial): phone number log redacted, `isSrvCiphertext` dead code removed — executed 2026-06-23, NOT YET REVIEWED
 
 [x*] = work was done by Claude under Grace's supervision and documented, but NOT yet reviewed/understood by Grace. Do not treat as taught until the review pass happens.
 [ ] Rebuild exercises (post-deadline, see REBUILD_EXERCISES.md)

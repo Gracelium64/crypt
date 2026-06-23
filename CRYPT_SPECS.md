@@ -1,6 +1,6 @@
 # Crypt — Technical Specifications
 
-_Last verified against source: 2026-06-23 (Refactor Pass 3 applied — server-side at-rest encryption for all plain-text PII fields, two bug fixes; all prior passes included)._
+_Last verified against source: 2026-06-23 (Refactor Pass 4 applied — phone number log redacted, `isSrvCiphertext` dead code removed; all prior passes included)._
 
 ---
 
@@ -110,13 +110,15 @@ All dependencies in both `package.json` files are exact-pinned (no `^`/`~` range
 A third, independent encryption layer wraps plain-text PII stored in MongoDB. Unlike the client-side E2E layer (`[CRYPT:v1]`), this layer is invisible to the frontend — the backend decrypts on every read path and the client never sees `[SRV:v1]` ciphertext.
 
 **What is encrypted:**
-- `TelegramSession.phoneNumber` — encrypted on write (`encryptTextAtRest`), decrypted + masked before sending to the frontend (`getTelegramStatus` → `+1***45`)
+- `TelegramSession.phoneNumber` — encrypted on write (`encryptTextAtRest`), decrypted + masked before sending to the frontend (`getTelegramStatus` → `+1***45`); server log at code-send also redacted to `+1***45` format (Pass 4)
 - `Message.encryptedText` for all plain-text messages — inbound Telegram bot, inbound WhatsApp, and outbound plain replies from Crypt users
 
 **Functions added in Pass 3:**
 - `encryptTextAtRest(plainText)` — AES-256-GCM with `DEMO_ENCRYPTION_KEY`; returns `[SRV:v1]<base64(iv+ciphertext)>`
 - `decryptSrvText(rawText)` — no-op for non-`[SRV:v1]` strings; `[CRYPT:v1]` E2E ciphertexts pass through unchanged (frontend decrypts those client-side as before)
-- `isSrvCiphertext(value)` — prefix check; dead code as of Pass 3 (deferred to Pass 4)
+
+**Pass 4 (2026-06-23):**
+- `isSrvCiphertext(value)` — removed; was never called anywhere (confirmed by exhaustive grep). Dead code deleted from `crypto.service.ts` and the `services/index.ts` barrel.
 
 **Read path:** `getMessages`, `getConversations`, and `broadcastMessage` all apply `decryptSrvText` over `encryptedText` before returning. `[CRYPT:v1]` E2E messages pass through and are decrypted client-side as before.
 

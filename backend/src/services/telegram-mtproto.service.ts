@@ -182,7 +182,7 @@ export async function requestPhoneCode(
 
   const codeType: "app" | "sms" = result?.isCodeViaApp ? "app" : "sms";
 
-  console.log("[MTProto] code sent to", phoneNumber, "via", codeType);
+  console.log("[MTProto] code sent to", phoneNumber.replace(/(\+?\d{1,3})\d+(\d{2})$/, "$1***$2"), "via", codeType);
   pendingAuth.set(accountId, { client, phoneCodeHash, phoneNumber });
   return { codeType };
 }

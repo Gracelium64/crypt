@@ -42,4 +42,3 @@ export const isMarkedCiphertext = (value: string) => value.startsWith(MARKER_PRE
 // Server-side at-rest marker — used for plain inbound/outbound message bodies and phone numbers
 export const encryptTextAtRest = (plainText: string): string => aesEncrypt(plainText, SRV_PREFIX);
 export const decryptSrvText = (rawText: string): string => aesDecrypt(rawText, SRV_PREFIX);
-export const isSrvCiphertext = (value: string) => value.startsWith(SRV_PREFIX);
