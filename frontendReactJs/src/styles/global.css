@@ -372,7 +372,7 @@ textarea {
   padding: 11px 14px;
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   outline: none;
   transition: border-color 150ms;
 }
