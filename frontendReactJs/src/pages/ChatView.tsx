@@ -140,6 +140,7 @@ export default function ChatView({
             </div>
           </div>
 
+          {/* HIDDEN: file preview — attachment sending disabled in UI
           {file && (
             <div className="file-preview">
               {filePreview && <img src={filePreview} alt="" />}
@@ -147,8 +148,10 @@ export default function ChatView({
               <button className="btn-danger btn-sm" type="button" onClick={removeFile}>✕</button>
             </div>
           )}
+          */}
 
           <div className="composer-row">
+            {/* HIDDEN: attachment button — disabled in UI
             <label className="composer-attach cv-attach-label" title="Attach image">
               📎
               <input
@@ -160,6 +163,7 @@ export default function ChatView({
                 disabled={!selectedChatId}
               />
             </label>
+            */}
             <textarea
               className="composer-input"
               rows={1}

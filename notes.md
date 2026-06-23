@@ -1,0 +1,1 @@
+- blockchain for encryption - dividing messages to chunks and encrypting them separately
