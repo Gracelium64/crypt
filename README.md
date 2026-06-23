@@ -34,7 +34,7 @@ MVP demo stack:
 - `frontendFlutter/`: phase 2 placeholder
 - `docs/`: maintainer and learner guides + `PRODUCTION_CHECKLIST.md`, `SCALABILITY.md`
 - `planning/`: `PROJECT_ROADMAP.md`, `LESSON_PLAN.md`, `REBUILD_EXERCISES.md`, `DEADLINE220626.md`
-- `REFACTOR/`: refactor history — `AUDIT_CHANGELOG.md`, `PASS1/`, `PASS2/`
+- `REFACTOR/`: refactor history — `AUDIT_CHANGELOG.md`, `PASS1/`, `PASS2/`, `PASS3/`, `PASS4/`
 - `CRYPT_SPECS.md`: full technical spec (stack, routes, encryption, env vars)
 
 ## Quick Start
@@ -163,3 +163,4 @@ Implemented now:
 - Rate limiting on auth and link/contact-lookup endpoints (`express-rate-limit`)
 - Login lockout after 8 consecutive failed attempts (15-minute lockout)
 - Upload validation: 10MB size cap and a MIME allow-list on plain (unencrypted) attachments — encrypted attachments are exempt since they're ciphertext, not a real file type
+- Server-side at-rest encryption (`[SRV:v1]`): all plain-text `Message` bodies and `TelegramSession.phoneNumber` encrypted with AES-256-GCM before MongoDB storage; backend decrypts on every read path — frontend never sees `[SRV:v1]` ciphertext

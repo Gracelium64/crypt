@@ -1,12 +1,13 @@
 # Crypt Companion Project Roadmap
 
-> **Current project status (as of 2026-06-20):**
+> **Current project status (as of 2026-06-23):**
 > The app is feature-complete and deployed on Render. All Stage 6 items below that are ✅ were implemented
 > during the project; items marked 🔜 are planned post-deadline.
 > **Refactor history:**
 > - Pass 1 (2026-06-20): auth/JWT hardening, Zod schemas, Socket.IO per-account rooms, email removal from JWT, and gap fixes
 > - Pass 2 (2026-06-20): CSS architecture refactor (App.css → 13 scoped component files, 122 inline styles extracted)
 > - Pass 2 Correction (2026-06-20): full security audit + remediation — `authorize()` on all 21 owner-only routes, `requireAdmin` on `/provider/resolve`, rate limiters on Telegram action routes and `/provider/link/init`, Swagger gated in production, Helmet added
+> - Pass 3 (2026-06-23): server-side at-rest encryption (`[SRV:v1]`) for all plain-text PII in MongoDB — `TelegramSession.phoneNumber` and all plain `Message.encryptedText` fields; two bugs fixed during audit
 >
 > This document remains useful as a learning roadmap — read stages 1-5 to understand the architecture.
 

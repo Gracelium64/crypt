@@ -5,7 +5,7 @@ import type { NewMessageEvent } from "telegram/events/NewMessage.js";
 import { Api } from "telegram";
 import { Message, ProviderConnection, TelegramSession, Key, Account } from "#models";
 import { broadcastMessage } from "./realtime.service.js";
-import { encryptText, decryptMarkedText } from "./crypto.service.js";
+import { encryptText, decryptMarkedText, encryptTextAtRest, isMarkedCiphertext } from "./crypto.service.js";
 import { logEvent } from "./logger.service.js";
 import { env } from "../config/env.js";
 
@@ -75,7 +75,7 @@ function subscribeToMessages(client: TelegramClient, accountId: string): void {
         to: ownerConn?.providerChatId ?? accountId,
         chatId: fromId,
         deliveryStatus: "sent",
-        encryptedText: text,
+        encryptedText: isMarkedCiphertext(text) ? text : encryptTextAtRest(text),
         bodyOmitted: false,
         attachments: [],
       });
@@ -219,7 +219,7 @@ export async function verifyPhoneCode(
 
   await TelegramSession.findOneAndUpdate(
     { accountId },
-    { accountId, phoneNumber, sessionString, active: true },
+    { accountId, phoneNumber: encryptTextAtRest(phoneNumber), sessionString, active: true },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
@@ -397,7 +397,7 @@ export async function startQrLogin(accountId: string): Promise<void> {
 
       await TelegramSession.findOneAndUpdate(
         { accountId },
-        { accountId, phoneNumber, sessionString, active: true },
+        { accountId, phoneNumber: encryptTextAtRest(phoneNumber), sessionString, active: true },
         { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
       );
 

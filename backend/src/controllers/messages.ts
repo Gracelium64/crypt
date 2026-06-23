@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { Message, ProviderConnection, Account } from "#models";
-import { isMarkedCiphertext, broadcastMessage, sendToProvider, hasActiveClient, sendViaMTProto } from "#services";
+import { isMarkedCiphertext, broadcastMessage, sendToProvider, hasActiveClient, sendViaMTProto, encryptTextAtRest, decryptSrvText } from "#services";
 import type { SendMessageBody, MessagesQuery, ConversationsQuery, ConversationSummary, DeleteConversationQuery, DeleteAllMessagesQuery } from "#schemas";
 
 const previewMessage = (message: {
@@ -31,7 +31,7 @@ export const getMessages: RequestHandler = async (req, res, next) => {
       .limit(Math.min(limit, 100))
       .lean();
 
-    res.json({ data: messages.reverse() });
+    res.json({ data: messages.reverse().map(m => ({ ...m, encryptedText: decryptSrvText(m.encryptedText ?? "") })) });
   } catch (error) {
     next(error);
   }
@@ -45,10 +45,12 @@ export const getConversations: RequestHandler = async (req, res, next) => {
   if (provider) query.provider = provider;
 
   try {
-    const messages = await Message.find(query)
+    const rawMessages = await Message.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
+
+    const messages = rawMessages.map(m => ({ ...m, encryptedText: decryptSrvText(m.encryptedText ?? "") }));
 
     const conversations = new Map<string, ConversationSummary>();
 
@@ -140,7 +142,8 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const storedText = payload.encryptedText ?? payload.text ?? "";
+    const rawText = payload.encryptedText ?? payload.text ?? "";
+    const storedText = isMarkedCiphertext(rawText) ? rawText : encryptTextAtRest(rawText);
     const senderChatId = conn.providerChatId;
 
     const message = await Message.create({
@@ -181,7 +184,7 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
     if (payload.provider === "telegram" && hasActiveClient(accountId)) {
       try {
         const sendFn = await sendViaMTProto(accountId, payload.chatId);
-        mtprotoSent = await sendFn(storedText);
+        mtprotoSent = await sendFn(rawText);
       } catch (mtprotoErr) {
         console.error("[MTProto] send error:", mtprotoErr);
       }
@@ -211,15 +214,15 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
       }
 
       try {
-        let outboundText = storedText;
-        if (payload.provider === "whatsapp" && !isMarkedCiphertext(storedText)) {
+        let outboundText = rawText;
+        if (payload.provider === "whatsapp" && !isMarkedCiphertext(rawText)) {
           const senderConn = await ProviderConnection.findOne({
             provider: "whatsapp",
             providerChatId: senderChatId,
             active: true,
           }).lean();
           const senderLabel = senderConn?.displayName ?? senderChatId;
-          outboundText = `[${senderLabel}]: ${storedText}`;
+          outboundText = `[${senderLabel}]: ${rawText}`;
         }
         await sendToProvider({
           provider: payload.provider,
@@ -253,7 +256,7 @@ export const sendMessage: RequestHandler = async (req, res, next) => {
       }
     }
 
-    res.status(201).json({ data: { message } });
+    res.status(201).json({ data: { message: { ...message.toObject(), encryptedText: decryptSrvText(message.encryptedText ?? "") } } });
   } catch (error) {
     next(error);
   }

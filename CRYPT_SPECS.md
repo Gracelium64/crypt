@@ -1,6 +1,6 @@
 # Crypt — Technical Specifications
 
-_Last verified against source: 2026-06-21 (Refactor Pass 1, Pass 2, Pass 2 Correction applied; honeypot system, missing deps, and missing DB collection added)._
+_Last verified against source: 2026-06-23 (Refactor Pass 3 applied — server-side at-rest encryption for all plain-text PII fields, two bug fixes; all prior passes included)._
 
 ---
 
@@ -101,8 +101,30 @@ All dependencies in both `package.json` files are exact-pinned (no `^`/`~` range
 ### Security context requirement
 `crypto.subtle` requires a secure context (HTTPS or localhost). In development, ngrok or a Cloudflare Tunnel exposes the local server over HTTPS so mobile devices can generate and use keys.
 
-### Separate, unrelated server-side AES helper
-`backend/src/services/crypto.service.ts` also contains a second, distinct AES-256-GCM helper (key derived from the `DEMO_ENCRYPTION_KEY` env var) used only to detect the `[CRYPT:v1]` marker (`isMarkedCiphertext`). **Refactor Pass 1 update (C1, 2026-06-20):** `encryptText` and `decryptMarkedText` now have callers — they are used to encrypt/decrypt Telegram MTProto session strings at rest in `TelegramSession` documents. The `DEMO_ENCRYPTION_KEY` env var is therefore required for any deployment that uses MTProto (not just demo purposes). The original "encrypt provider credentials" feature they were written for was never wired up and remains unbuilt, but these functions are no longer dead code. This is unrelated to the user-to-user E2E encryption described above.
+### Server-side AES helper — session string encryption (`[CRYPT:v1]` family)
+
+`backend/src/services/crypto.service.ts` contains a second, distinct AES-256-GCM helper (key derived from `DEMO_ENCRYPTION_KEY`). **Refactor Pass 1 (C1, 2026-06-20):** `encryptText` and `decryptMarkedText` encrypt/decrypt Telegram MTProto session strings at rest in `TelegramSession` documents. `DEMO_ENCRYPTION_KEY` is therefore required for any deployment that uses MTProto. The original "encrypt provider credentials" feature they were written for was never built. This is unrelated to the user-to-user E2E encryption described above.
+
+### Server-side at-rest encryption — `[SRV:v1]` (Refactor Pass 3, 2026-06-23)
+
+A third, independent encryption layer wraps plain-text PII stored in MongoDB. Unlike the client-side E2E layer (`[CRYPT:v1]`), this layer is invisible to the frontend — the backend decrypts on every read path and the client never sees `[SRV:v1]` ciphertext.
+
+**What is encrypted:**
+- `TelegramSession.phoneNumber` — encrypted on write (`encryptTextAtRest`), decrypted + masked before sending to the frontend (`getTelegramStatus` → `+1***45`)
+- `Message.encryptedText` for all plain-text messages — inbound Telegram bot, inbound WhatsApp, and outbound plain replies from Crypt users
+
+**Functions added in Pass 3:**
+- `encryptTextAtRest(plainText)` — AES-256-GCM with `DEMO_ENCRYPTION_KEY`; returns `[SRV:v1]<base64(iv+ciphertext)>`
+- `decryptSrvText(rawText)` — no-op for non-`[SRV:v1]` strings; `[CRYPT:v1]` E2E ciphertexts pass through unchanged (frontend decrypts those client-side as before)
+- `isSrvCiphertext(value)` — prefix check; dead code as of Pass 3 (deferred to Pass 4)
+
+**Read path:** `getMessages`, `getConversations`, and `broadcastMessage` all apply `decryptSrvText` over `encryptedText` before returning. `[CRYPT:v1]` E2E messages pass through and are decrypted client-side as before.
+
+**Behavior change (WhatsApp, Pass 3):** Plain WhatsApp inbound messages previously had `bodyOmitted: true`, `encryptedText: ""` — their bodies were discarded. Pass 3 stores them encrypted at rest (`bodyOmitted: false`). The frontend now shows their actual content instead of "(content omitted for privacy)".
+
+**Bugs fixed during Pass 3 audit (2026-06-23):**
+- `subscribeToMessages` write site: inbound MTProto messages were stored in plain text. Fixed by adding `isMarkedCiphertext` guard + `encryptTextAtRest` at line 78 of `telegram-mtproto.service.ts`.
+- `sendMessage` 201 response: returned `[SRV:v1]` ciphertext in the body. Fixed by applying `decryptSrvText` in the response. Functional impact was nil (`useSend.ts` discards the 201 body).
 
 ---
 

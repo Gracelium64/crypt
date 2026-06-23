@@ -9,6 +9,7 @@ import {
   startQrLogin,
   getQrLoginStatus,
   resolveQr2fa,
+  decryptSrvText,
 } from "#services";
 import type { RequestPhoneCodeBody, VerifyPhoneCodeBody } from "#schemas";
 
@@ -22,7 +23,7 @@ export const getTelegramStatus: RequestHandler = async (req, res, next) => {
         active: session?.active ?? false,
         connected: hasActiveClient(accountId),
         phoneNumber: session?.phoneNumber
-          ? session.phoneNumber.replace(/(\+?\d{1,3})\d+(\d{2})$/, "$1***$2")
+          ? decryptSrvText(session.phoneNumber).replace(/(\+?\d{1,3})\d+(\d{2})$/, "$1***$2")
           : null,
       },
     });
