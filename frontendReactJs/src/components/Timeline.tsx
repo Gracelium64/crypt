@@ -155,7 +155,13 @@ const Timeline: FC<Props> = ({
                                       "application/octet-stream",
                                   });
                                   const urlObj = URL.createObjectURL(blob);
-                                  window.open(urlObj, "_blank");
+                                  const a = document.createElement("a");
+                                  a.href = urlObj;
+                                  a.download = meta.filename || "attachment";
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  URL.revokeObjectURL(urlObj);
                                 } catch (_err) {
                                   console.error(_err);
                                   setAttachError("Failed to decrypt/open attachment");
