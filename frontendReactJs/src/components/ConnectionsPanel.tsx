@@ -10,8 +10,8 @@ type Props = {
 };
 
 const providerIcon: Record<string, string> = {
-  telegram: "✈️",
-  whatsapp: "💬",
+  telegram: "🔵",
+  whatsapp: "🟢",
 };
 
 export default function ConnectionsPanel({ connections, connectionsBusy, loadConnectionsList, deleteConnection }: Props) {
@@ -28,6 +28,10 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
       setUnlinkError("Failed to unlink — please try again");
     }
   };
+
+  const pendingConn = confirmUnlinkId
+    ? connections.find((c) => c._id === confirmUnlinkId)
+    : null;
 
   return (
     <>
@@ -50,35 +54,14 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
               <strong>{conn.displayName || conn.username || conn.providerChatId}</strong>
               <span>{conn.provider} · {conn.providerChatId}</span>
             </div>
-            {confirmUnlinkId === conn._id ? (
-              <div className="conn-unlink-row">
-                <span className="conn-unlink-label">Unlink?</span>
-                <button
-                  type="button"
-                  className="btn-danger btn-sm"
-                  disabled={connectionsBusy}
-                  onClick={() => void handleUnlink(conn._id)}
-                >
-                  Yes
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  onClick={() => setConfirmUnlinkId(null)}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="btn-danger btn-sm"
-                disabled={connectionsBusy}
-                onClick={() => setConfirmUnlinkId(conn._id)}
-              >
-                Unlink
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-danger btn-sm"
+              disabled={connectionsBusy}
+              onClick={() => setConfirmUnlinkId(conn._id)}
+            >
+              Unlink
+            </button>
           </div>
         ))
       )}
@@ -92,6 +75,34 @@ export default function ConnectionsPanel({ connections, connectionsBusy, loadCon
           Refresh
         </button>
       </div>
+
+      {pendingConn && (
+        <div className="conn-modal-backdrop" onClick={() => setConfirmUnlinkId(null)}>
+          <div className="conn-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="conn-modal-msg">
+              Are you sure you want to unlink{" "}
+              <strong>{pendingConn.provider.charAt(0).toUpperCase() + pendingConn.provider.slice(1)}</strong>?
+            </p>
+            <div className="conn-modal-actions">
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={connectionsBusy}
+                onClick={() => void handleUnlink(pendingConn._id)}
+              >
+                Yes, unlink
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setConfirmUnlinkId(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

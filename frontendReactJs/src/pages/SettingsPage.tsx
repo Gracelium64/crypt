@@ -8,8 +8,8 @@ import type { EcdhPrivateJwk } from "@/lib/crypto";
 import type { Connection, Provider } from "@/types";
 
 const providerMeta: Record<Provider, { label: string; icon: string }> = {
-  telegram: { label: "Telegram", icon: "✈️" },
-  whatsapp: { label: "WhatsApp", icon: "💬" },
+  telegram: { label: "Telegram", icon: "🔵" },
+  whatsapp: { label: "WhatsApp", icon: "🟢" },
 };
 const supportedProviders: Provider[] = ["telegram", "whatsapp"];
 

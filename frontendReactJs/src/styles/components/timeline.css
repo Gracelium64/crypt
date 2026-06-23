@@ -128,6 +128,8 @@
 .message-security {
   margin-left: 12px;
 }
+.message-security--secure { color: var(--green); }
+.message-security--plain  { color: var(--danger); }
 
 .attach-error {
   color: var(--red, #e53e3e);

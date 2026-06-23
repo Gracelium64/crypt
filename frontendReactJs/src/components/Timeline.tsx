@@ -180,7 +180,7 @@ const Timeline: FC<Props> = ({
 
               <div className="message-foot">
                 <span>Delivery: {message.deliveryStatus ?? "unknown"}</span>
-                <span className="message-security">
+                <span className={`message-security message-security--${secure ? "secure" : "plain"}`}>
                   Security: {secure ? "secure" : "plain"}
                 </span>
               </div>

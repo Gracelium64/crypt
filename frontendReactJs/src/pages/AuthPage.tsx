@@ -112,22 +112,18 @@ export default function AuthPage() {
           {passwordError && <div className="auth-field-error">{passwordError}</div>}
         </div>
 
-        {tab === "signin" && (
-          <div className="auth-forgot-row">
-            <button
-              type="button"
-              onClick={() => setForgotRevealed(true)}
-              className="auth-forgot-btn"
-            >
-              Forgot password?
-            </button>
-            {forgotRevealed && (
-              <div className="auth-forgot-hint">
-                Sounds like a you problem
-              </div>
-            )}
+        <div className={`auth-forgot-row${tab !== "signin" ? " auth-forgot-row--hidden" : ""}`}>
+          <button
+            type="button"
+            onClick={() => setForgotRevealed(true)}
+            className="auth-forgot-btn"
+          >
+            Forgot password?
+          </button>
+          <div className={`auth-forgot-hint${forgotRevealed ? "" : " auth-forgot-hint--hidden"}`}>
+            Sounds like a you problem
           </div>
-        )}
+        </div>
 
         <div className="auth-actions">
           {tab === "signin" ? (

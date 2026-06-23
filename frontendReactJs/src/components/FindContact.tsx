@@ -86,7 +86,7 @@ export default function FindContact({
               setError(null);
             }}
           >
-            {p === "telegram" ? "✈️ Telegram" : "💬 WhatsApp"}
+            {p === "telegram" ? "🔵 Telegram" : "🟢 WhatsApp"}
           </button>
         ))}
       </div>

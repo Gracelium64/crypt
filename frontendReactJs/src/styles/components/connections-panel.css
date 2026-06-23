@@ -46,3 +46,37 @@
 .conn-refresh-row {
   justify-content: center;
 }
+
+/* ── Unlink confirmation modal ── */
+.conn-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.conn-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.conn-modal-msg {
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.conn-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

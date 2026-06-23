@@ -35,6 +35,14 @@
 .find-result-body { padding: 0 16px 14px; }
 .find-error { color: var(--danger); font-size: 14px; margin-top: 8px; }
 
+/* ── FindContact container safe area ── */
+.find-contact {
+  padding-left: max(16px, var(--safe-l));
+  padding-right: max(16px, var(--safe-r));
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
 /* ── FindContact inline style extractions ── */
 .fc-provider-tabs {
   display: flex;
