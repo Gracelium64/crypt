@@ -15,6 +15,15 @@ const providerMeta: Record<Provider, { label: string; icon: string }> = {
 };
 const supportedProviders: Provider[] = ["telegram", "whatsapp"];
 
+const THEMES = [
+  { key: "amethyst", label: "Amethyst", accent: "#c084fc" },
+  { key: "blush", label: "Blush Rose", accent: "#f472b6" },
+  { key: "mauve", label: "Mauve", accent: "#e879a0" },
+  { key: "lavender", label: "Lavender", accent: "#818cf8" },
+  { key: "fuchsia", label: "Fuchsia", accent: "#e879f9" },
+  { key: "obsidian-ghost", label: "Obsidian Ghost", accent: "#e8e8e8" },
+] as const;
+
 type Props = {
   localOwnerId: string;
   setLocalOwnerId: (v: string) => void;
@@ -33,6 +42,8 @@ type Props = {
   toastsEnabled: boolean;
   toggleToasts: () => void;
   onConnectionsRefreshed: () => void;
+  theme: string;
+  onThemeChange: (t: string) => void;
 };
 
 export default function SettingsPage({
@@ -53,6 +64,8 @@ export default function SettingsPage({
   toastsEnabled,
   toggleToasts,
   onConnectionsRefreshed,
+  theme,
+  onThemeChange,
 }: Props) {
   const auth = useAuth();
   const [telegramRefreshKey, setTelegramRefreshKey] = useState(0);
@@ -62,8 +75,14 @@ export default function SettingsPage({
     await deleteConnection(id);
     if (conn?.provider === "telegram") {
       try {
-        await apiFetch("/telegram/direct/session", { method: "DELETE" }, auth.token);
-      } catch { /* non-fatal — MTProto session may already be gone */ }
+        await apiFetch(
+          "/telegram/direct/session",
+          { method: "DELETE" },
+          auth.token,
+        );
+      } catch {
+        /* non-fatal — MTProto session may already be gone */
+      }
       setTelegramRefreshKey((k) => k + 1);
     }
   };
@@ -71,7 +90,11 @@ export default function SettingsPage({
   const handleTelegramDisconnected = async () => {
     const telegramConns = connections.filter((c) => c.provider === "telegram");
     for (const conn of telegramConns) {
-      try { await deleteConnection(conn._id); } catch { /* non-fatal */ }
+      try {
+        await deleteConnection(conn._id);
+      } catch {
+        /* non-fatal */
+      }
     }
     await loadConnectionsList();
   };
@@ -86,9 +109,34 @@ export default function SettingsPage({
             <strong>{auth.user?.displayName || auth.user?.email}</strong>
             <span>{auth.user?.email}</span>
           </div>
-          <button className="btn-ghost btn-sm" type="button" onClick={() => void auth.logout()}>
+          <button
+            className="btn-ghost btn-sm"
+            type="button"
+            onClick={() => void auth.logout()}
+          >
             Sign out
           </button>
+        </div>
+      </div>
+
+      {/* Appearance */}
+      <div className="settings-section">
+        <div className="settings-section-title">Appearance</div>
+        <div className="sp-theme-grid">
+          {THEMES.map(({ key, label, accent }) => (
+            <button
+              key={key}
+              type="button"
+              className={`sp-theme-btn${theme === key ? " active" : ""}`}
+              onClick={() => onThemeChange(key)}
+            >
+              <span
+                className="sp-theme-dot"
+                style={{ background: accent }}
+              />
+              <span className="sp-theme-label">{label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -115,7 +163,13 @@ export default function SettingsPage({
       <div className="settings-section">
         <div className="settings-section-title">Connect Telegram</div>
         <div className="sp-tg-desc">
-          <strong>Phone code</strong> — enter your number and confirm the code that appears in your Telegram app (look for a message from the "Telegram" account, not SMS). If no code arrives, try <strong>QR code</strong> — you will need a second device to scan it. As a last resort, <strong>Via CryptBot</strong> links your account reliably but routes messages through the bot instead of direct user-to-user.
+          <strong>Phone code</strong> — enter your number and confirm the code
+          that appears in your Telegram app (look for a message from the
+          "Telegram" account, not SMS). If no code arrives, try{" "}
+          <strong>QR code</strong> — you will need a second device to scan it.
+          As a last resort, <strong>Via CryptBot</strong> links your account
+          reliably but routes messages through the bot instead of direct
+          user-to-user.
         </div>
         <div className="sp-tg-body">
           <ConnectTelegram
@@ -165,7 +219,9 @@ export default function SettingsPage({
           </div>
           <button
             type="button"
-            className={toastsEnabled ? `btn-ghost btn-sm sp-toast-on` : "btn-sm"}
+            className={
+              toastsEnabled ? `btn-ghost btn-sm sp-toast-on` : "btn-sm"
+            }
             onClick={toggleToasts}
           >
             {toastsEnabled ? "On" : "Off"}
@@ -182,10 +238,16 @@ export default function SettingsPage({
           return (
             <div key={p} className="settings-row">
               <div className="settings-row-label">
-                <strong>{providerMeta[p].icon} {providerMeta[p].label}</strong>
-                <span>{ready ? "Backend ready" : "Needs setup — add credentials"}</span>
+                <strong>
+                  {providerMeta[p].icon} {providerMeta[p].label}
+                </strong>
+                <span>
+                  {ready ? "Provider available" : "Missing credentials"}
+                </span>
               </div>
-              <span className={`chip ${ready ? "green" : "warn"}`}>{ready ? "✓" : "!"}</span>
+              <span className={`chip ${ready ? "green" : "warn"}`}>
+                {ready ? "✓" : "!"}
+              </span>
             </div>
           );
         })}

@@ -1,3 +1,0 @@
-- main color theme - global.css
----
-- unlink: when disconnecting from MTProto session also automatically unlink telegram

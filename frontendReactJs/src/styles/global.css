@@ -25,29 +25,132 @@ body,
   overflow: hidden;
 }
 
-/* ── CSS variables ── */
+/* ── CSS variables — Amethyst (default theme) ── */
 :root {
-  --bg: #0b1220;
-  --surface: #111827;
-  --surface2: #1a2337;
+  --bg: #0e0b14;
+  --surface: #15102a;
+  --surface2: #1e1838;
   --border: rgba(255, 255, 255, 0.07);
-  --muted: #6b84a3;
-  --text: #e2eaf6;
-  --text-dim: #94aac4;
-  --accent: #2ea6ff;
-  --accent-dim: rgba(46, 166, 255, 0.14);
-  --green: #22c55e;
-  --green-dim: rgba(34, 197, 94, 0.15);
+  --muted: #8b6fb5;
+  --text: #ede6ff;
+  --text-dim: #c4b0e0;
+  --accent: #c084fc;
+  --accent-dim: rgba(192, 132, 252, 0.15);
+  --green: #34d399;
+  --green-dim: rgba(52, 211, 153, 0.15);
   --warn: #f59e0b;
   --danger: #ef4444;
-  --inbound: #1e2d42;
-  --outbound: #1a4060;
+  --inbound: #1e1535;
+  --outbound: #2d1f50;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
   --header-h: 56px;
   --nav-h: 60px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
+}
+
+/* ── Color themes ── */
+[data-theme="amethyst"] {
+  --bg: #0e0b14;
+  --surface: #15102a;
+  --surface2: #1e1838;
+  --accent: #c084fc;
+  --accent-dim: rgba(192, 132, 252, 0.15);
+  --muted: #8b6fb5;
+  --text: #ede6ff;
+  --text-dim: #c4b0e0;
+  --inbound: #1e1535;
+  --outbound: #2d1f50;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
+}
+
+[data-theme="blush"] {
+  --bg: #140a0f;
+  --surface: #1f1118;
+  --surface2: #2a1822;
+  --accent: #f472b6;
+  --accent-dim: rgba(244, 114, 182, 0.15);
+  --muted: #9c6b85;
+  --text: #f5e6ef;
+  --text-dim: #c9a0b8;
+  --inbound: #2a1520;
+  --outbound: #3d1a2e;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
+}
+
+[data-theme="mauve"] {
+  --bg: #120e12;
+  --surface: #1c1620;
+  --surface2: #26202c;
+  --accent: #e879a0;
+  --accent-dim: rgba(232, 121, 160, 0.15);
+  --muted: #8c6e88;
+  --text: #f0e6f0;
+  --text-dim: #c4a8c0;
+  --inbound: #261a28;
+  --outbound: #321a2e;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
+}
+
+[data-theme="lavender"] {
+  --bg: #0b0c18;
+  --surface: #10122a;
+  --surface2: #181b38;
+  --accent: #818cf8;
+  --accent-dim: rgba(129, 140, 248, 0.15);
+  --muted: #6b72a8;
+  --text: #e8e9ff;
+  --text-dim: #a8acd4;
+  --inbound: #151830;
+  --outbound: #1e2050;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
+}
+
+[data-theme="fuchsia"] {
+  --bg: #100812;
+  --surface: #180c1e;
+  --surface2: #22122a;
+  --accent: #e879f9;
+  --accent-dim: rgba(232, 121, 249, 0.15);
+  --muted: #8c5ea0;
+  --text: #f8e6ff;
+  --text-dim: #c9a8df;
+  --inbound: #221230;
+  --outbound: #2e1040;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #fff;
+  --btn-primary-border: transparent;
+}
+
+[data-theme="obsidian-ghost"] {
+  --bg: #000000;
+  --surface: #080808;
+  --surface2: #111111;
+  --accent: #ffffff;
+  --accent-dim: rgba(255, 255, 255, 0.06);
+  --muted: #555555;
+  --text: #e8e8e8;
+  --text-dim: #888888;
+  --border: rgba(255, 255, 255, 0.08);
+  --green: #4ade80;
+  --green-dim: rgba(74, 222, 128, 0.12);
+  --inbound: #111111;
+  --outbound: #191919;
+  --btn-primary-bg: transparent;
+  --btn-primary-fg: #ffffff;
+  --btn-primary-border: rgba(255, 255, 255, 0.3);
 }
 
 /* ── App shell ── */
@@ -218,11 +321,11 @@ body,
 /* ── Buttons ── */
 button {
   font: inherit;
-  border: none;
+  border: 1px solid var(--btn-primary-border);
   border-radius: 999px;
   padding: 10px 18px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;

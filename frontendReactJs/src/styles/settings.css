@@ -87,3 +87,45 @@
 .sp-spacer {
   height: 24px;
 }
+
+/* ── Theme picker ── */
+.sp-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px 14px 14px;
+}
+.sp-theme-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  padding: 10px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 150ms;
+}
+.sp-theme-btn.active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.sp-theme-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: block;
+  flex-shrink: 0;
+}
+.sp-theme-btn.active .sp-theme-dot {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+.sp-theme-label {
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}

@@ -56,6 +56,17 @@ function AppContent() {
   const [toastsEnabled, setToastsEnabled] = useState(
     () => localStorage.getItem("crypt:toasts") !== "off",
   );
+  const [theme, setTheme] = useState<string>(() => {
+    const t = localStorage.getItem("crypt:theme") ?? "amethyst";
+    document.documentElement.setAttribute("data-theme", t);
+    return t;
+  });
+
+  const handleSetTheme = (t: string) => {
+    setTheme(t);
+    localStorage.setItem("crypt:theme", t);
+    document.documentElement.setAttribute("data-theme", t);
+  };
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [loadingProviders, setLoadingProviders] = useState<Set<Provider>>(
     new Set(),
@@ -692,6 +703,8 @@ function AppContent() {
                 toastsEnabled={toastsEnabled}
                 toggleToasts={toggleToasts}
                 onConnectionsRefreshed={() => showToast("Telegram connected")}
+                theme={theme}
+                onThemeChange={handleSetTheme}
               />
             )}
           </div>
