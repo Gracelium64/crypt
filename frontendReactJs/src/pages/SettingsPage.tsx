@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useAuth } from "@/context";
 import "../styles/settings.css";
 import KeyManager from "@/components/KeyManager";
 import ConnectTelegram from "@/components/ConnectTelegram";
 import ConnectWhatsApp from "@/components/ConnectWhatsApp";
 import ConnectionsPanel from "@/components/ConnectionsPanel";
+import { apiFetch } from "@/lib/api";
 import type { EcdhPrivateJwk } from "@/lib/crypto";
 import type { Connection, Provider } from "@/types";
 
@@ -53,6 +55,26 @@ export default function SettingsPage({
   onConnectionsRefreshed,
 }: Props) {
   const auth = useAuth();
+  const [telegramRefreshKey, setTelegramRefreshKey] = useState(0);
+
+  const handleDeleteConnection = async (id: string) => {
+    const conn = connections.find((c) => c._id === id);
+    await deleteConnection(id);
+    if (conn?.provider === "telegram") {
+      try {
+        await apiFetch("/telegram/direct/session", { method: "DELETE" }, auth.token);
+      } catch { /* non-fatal — MTProto session may already be gone */ }
+      setTelegramRefreshKey((k) => k + 1);
+    }
+  };
+
+  const handleTelegramDisconnected = async () => {
+    const telegramConns = connections.filter((c) => c.provider === "telegram");
+    for (const conn of telegramConns) {
+      try { await deleteConnection(conn._id); } catch { /* non-fatal */ }
+    }
+    await loadConnectionsList();
+  };
 
   return (
     <div className="settings-screen">
@@ -98,10 +120,12 @@ export default function SettingsPage({
         <div className="sp-tg-body">
           <ConnectTelegram
             token={auth.token}
+            refreshKey={telegramRefreshKey}
             onConnected={() => {
               void loadConnectionsList();
               onConnectionsRefreshed();
             }}
+            onDisconnected={handleTelegramDisconnected}
           />
         </div>
       </div>
@@ -127,7 +151,7 @@ export default function SettingsPage({
           connections={connections}
           connectionsBusy={connectionsBusy}
           loadConnectionsList={loadConnectionsList}
-          deleteConnection={deleteConnection}
+          deleteConnection={handleDeleteConnection}
         />
       </div>
 

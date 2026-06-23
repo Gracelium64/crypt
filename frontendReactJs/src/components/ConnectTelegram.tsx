@@ -14,11 +14,13 @@ interface TelegramStatus {
 interface Props {
   token?: string | null;
   onConnected?: () => void;
+  onDisconnected?: () => Promise<void>;
+  refreshKey?: number;
 }
 
 type Mode = "phone" | "qr" | "bot";
 
-export default function ConnectTelegram({ token, onConnected }: Props) {
+export default function ConnectTelegram({ token, onConnected, onDisconnected, refreshKey }: Props) {
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [mode, setMode] = useState<Mode>("phone");
 
@@ -59,7 +61,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { void loadStatus(); }, [token]);
+  useEffect(() => { void loadStatus(); }, [token, refreshKey]);
 
   // ── QR polling ────────────────────────────────────────────────────────────
 
@@ -201,6 +203,7 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
       setPhone("");
       setStep("idle");
       setQrStep("idle");
+      await onDisconnected?.();
     } finally {
       setBusy(false);
     }
@@ -226,18 +229,28 @@ export default function ConnectTelegram({ token, onConnected }: Props) {
         </div>
         <div className="ctg-connected-actions">
           <span className="chip green">Active</span>
-          {disconnectConfirm ? (
-            <>
-              <span className="ctg-disconnect-label">Disconnect?</span>
-              <button className="btn-sm btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>Yes</button>
-              <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(false)}>Cancel</button>
-            </>
-          ) : (
-            <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
-              Disconnect
-            </button>
-          )}
+          <button className="btn-ghost btn-sm" type="button" onClick={() => setDisconnectConfirm(true)} disabled={busy}>
+            Disconnect
+          </button>
         </div>
+
+      {disconnectConfirm && (
+        <div className="conn-modal-backdrop" onClick={() => setDisconnectConfirm(false)}>
+          <div className="conn-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="conn-modal-msg">
+              Are you sure you want to disconnect <strong>Telegram</strong>?
+            </p>
+            <div className="conn-modal-actions">
+              <button className="btn-danger" type="button" onClick={() => void disconnect()} disabled={busy}>
+                Yes, disconnect
+              </button>
+              <button className="btn-ghost" type="button" onClick={() => setDisconnectConfirm(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     );
   }
