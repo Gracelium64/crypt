@@ -1,0 +1,1089 @@
+{
+  "info": {
+    "_postman_id": "crypt-api-collection-v1",
+    "name": "Crypt API",
+    "description": "Complete API collection for the Crypt backend.\n\n**Setup:**\n1. Import this file into Postman.\n2. Set the `adminToken` collection variable to your `WEBHOOK_ADMIN_TOKEN` env value.\n3. Run **Sign Up** or **Login** — `authToken` is captured automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://crypt-backend-s14y.onrender.com/api",
+      "type": "string"
+    },
+    {
+      "key": "serverUrl",
+      "value": "https://crypt-backend-s14y.onrender.com",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string",
+      "description": "Auto-set after login or signup"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string",
+      "description": "Set to WEBHOOK_ADMIN_TOKEN from your backend .env"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{serverUrl}}/health",
+              "host": ["{{serverUrl}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign Up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "    pm.collectionVariables.set('authToken', res.token);",
+                  "    console.log('authToken saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\",\n  \"displayName\": \"Test User\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "signup"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "    pm.collectionVariables.set('authToken', res.token);",
+                  "    console.log('authToken saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-password"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "account"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Keys",
+      "item": [
+        {
+          "name": "Register Key Pair",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicKey\": \"<base64-or-jwk-public-key>\",\n  \"privateKeyJwk\": \"<optional-encrypted-private-key-jwk>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/keys/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["keys", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Private Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/keys/me/private",
+              "host": ["{{baseUrl}}"],
+              "path": ["keys", "me", "private"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Public Key by Owner ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/keys/:ownerId",
+              "host": ["{{baseUrl}}"],
+              "path": ["keys", ":ownerId"],
+              "variable": [
+                {
+                  "key": "ownerId",
+                  "value": "<account-id>",
+                  "description": "The accountId of the key owner"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Get Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages?provider=telegram&chatId=<chat-id>&limit=40",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages"],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "",
+                  "description": "ISO datetime — only fetch messages after this timestamp",
+                  "disabled": true
+                },
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "telegram or whatsapp"
+                },
+                {
+                  "key": "chatId",
+                  "value": "<chat-id>",
+                  "description": "Provider chat ID to filter by"
+                },
+                {
+                  "key": "limit",
+                  "value": "40",
+                  "description": "1–100, default 40"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?limit=200",
+              "host": ["{{baseUrl}}"],
+              "path": ["conversations"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "telegram or whatsapp",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "200",
+                  "description": "1–200, default 200"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"telegram\",\n  \"from\": \"<sender-chat-id>\",\n  \"to\": \"<recipient-username-or-id>\",\n  \"chatId\": \"<chat-id>\",\n  \"text\": \"Hello from Postman!\",\n  \"encrypt\": true,\n  \"attachments\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/messages/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages", "send"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages/conversation?provider=telegram&chatId=<chat-id>",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages", "conversation"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "telegram or whatsapp"
+                },
+                {
+                  "key": "chatId",
+                  "value": "<chat-id>",
+                  "description": "Provider chat ID to delete"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete All Messages",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages", "all"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "Optional — omit to delete all providers",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Provider Connections",
+      "item": [
+        {
+          "name": "List All Connections",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/connections",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "connections"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Connection by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/connections/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "connections", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "<connection-id>",
+                  "description": "Provider connection document ID"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Connection by ID",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/connections/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "connections", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "<connection-id>",
+                  "description": "Provider connection document ID"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Contact",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/contact/search?provider=telegram&username=<username>",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "contact", "search"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "telegram or whatsapp"
+                },
+                {
+                  "key": "username",
+                  "value": "<username>",
+                  "description": "Username to search for"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Resolve Chat ID (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-admin-token", "value": "{{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/resolve?provider=telegram&chatId=<chat-id>",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "resolve"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "telegram",
+                  "description": "telegram or whatsapp"
+                },
+                {
+                  "key": "chatId",
+                  "value": "<chat-id>",
+                  "description": "Provider chat ID to resolve"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Provider Status & Webhooks",
+      "item": [
+        {
+          "name": "Get Providers Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/providers/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Telegram Webhook — Verify (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/providers/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "telegram", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Telegram Webhook — Receive Update (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 123456789,\n  \"message\": {\n    \"message_id\": 1,\n    \"from\": { \"id\": 111111111, \"username\": \"testuser\" },\n    \"chat\": { \"id\": 111111111, \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"Hello\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/providers/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "telegram", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "WhatsApp Webhook — Verify (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/providers/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<verify-token>&hub.challenge=<challenge>",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "whatsapp", "webhook"],
+              "query": [
+                { "key": "hub.mode", "value": "subscribe" },
+                { "key": "hub.verify_token", "value": "<verify-token>" },
+                { "key": "hub.challenge", "value": "<challenge>" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "WhatsApp Webhook — Receive Update (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"<business-account-id>\",\n      \"changes\": [\n        {\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": { \"display_phone_number\": \"1234567890\", \"phone_number_id\": \"<phone-id>\" },\n            \"messages\": [\n              {\n                \"from\": \"1234567890\",\n                \"id\": \"wamid.xxx\",\n                \"timestamp\": \"1700000000\",\n                \"text\": { \"body\": \"Hello\" },\n                \"type\": \"text\"\n              }\n            ]\n          },\n          \"field\": \"messages\"\n        }\n      ]\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/providers/whatsapp/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "whatsapp", "webhook"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Provider Link (QR Linking)",
+      "item": [
+        {
+          "name": "Init Link Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"telegram\",\n  \"ttlMinutes\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/provider/link/init",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "link", "init"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Link Session Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/provider/link/status/:code",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "link", "status", ":code"],
+              "variable": [
+                {
+                  "key": "code",
+                  "value": "<link-code>",
+                  "description": "The code returned by init link session"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Link Session (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-admin-token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"<link-code>\",\n  \"provider\": \"telegram\",\n  \"providerChatId\": \"<telegram-chat-id>\",\n  \"providerDisplayName\": \"Test User\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/provider/link/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "link", "complete"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Telegram Direct (MTProto)",
+      "item": [
+        {
+          "name": "Get Direct Session Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Request Login Code (Phone)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/request-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "request-code"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Login Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"12345\",\n  \"password\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/verify-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "verify-code"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Direct Session",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/session",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "session"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset All Sessions",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/reset-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "reset-sessions"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Request QR Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/request-qr",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "request-qr"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get QR Login Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/qr-status",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "qr-status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit QR 2FA Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"your-2fa-password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/telegram/direct/qr-2fa",
+              "host": ["{{baseUrl}}"],
+              "path": ["telegram", "direct", "qr-2fa"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Uploads",
+      "item": [
+        {
+          "name": "Upload Base64 File",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"filename\": \"test.png\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/uploads/base64",
+              "host": ["{{baseUrl}}"],
+              "path": ["uploads", "base64"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload File (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Select a file to upload"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/uploads/formidable",
+              "host": ["{{baseUrl}}"],
+              "path": ["uploads", "formidable"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Set Telegram Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-admin-token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/telegram/set-webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "telegram", "set-webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Telegram Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-admin-token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/telegram/delete-webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "telegram", "delete-webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Test Providers",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-admin-token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "providers", "test"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Honeypot (Trap Endpoints)",
+      "description": "Intentionally fake routes that log attacker activity (IP, method, path, user-agent) to the DB and return fabricated data.",
+      "item": [
+        {
+          "name": "GET /users",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] } },
+          "response": []
+        },
+        {
+          "name": "POST /users/login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /users/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "variable": [{ "key": "id", "value": "1" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /accounts",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] } },
+          "response": []
+        },
+        {
+          "name": "GET /credentials",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] } },
+          "response": []
+        },
+        {
+          "name": "GET /env",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/env", "host": ["{{baseUrl}}"], "path": ["env"] } },
+          "response": []
+        },
+        {
+          "name": "GET /config",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/config", "host": ["{{baseUrl}}"], "path": ["config"] } },
+          "response": []
+        },
+        {
+          "name": "GET /settings",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/settings", "host": ["{{baseUrl}}"], "path": ["settings"] } },
+          "response": []
+        },
+        {
+          "name": "GET /sessions",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/sessions", "host": ["{{baseUrl}}"], "path": ["sessions"] } },
+          "response": []
+        },
+        {
+          "name": "GET /tokens",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/tokens", "host": ["{{baseUrl}}"], "path": ["tokens"] } },
+          "response": []
+        },
+        {
+          "name": "GET /logs",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/logs", "host": ["{{baseUrl}}"], "path": ["logs"] } },
+          "response": []
+        },
+        {
+          "name": "GET /db/stats",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/db/stats", "host": ["{{baseUrl}}"], "path": ["db", "stats"] } },
+          "response": []
+        },
+        {
+          "name": "GET /analytics",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/analytics", "host": ["{{baseUrl}}"], "path": ["analytics"] } },
+          "response": []
+        },
+        {
+          "name": "GET /reports",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/reports", "host": ["{{baseUrl}}"], "path": ["reports"] } },
+          "response": []
+        },
+        {
+          "name": "GET /payments",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/payments", "host": ["{{baseUrl}}"], "path": ["payments"] } },
+          "response": []
+        },
+        {
+          "name": "GET /billing",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/billing", "host": ["{{baseUrl}}"], "path": ["billing"] } },
+          "response": []
+        },
+        {
+          "name": "GET /export",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/export", "host": ["{{baseUrl}}"], "path": ["export"] } },
+          "response": []
+        },
+        {
+          "name": "GET /backup",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/backup", "host": ["{{baseUrl}}"], "path": ["backup"] } },
+          "response": []
+        },
+        {
+          "name": "GET /system",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/system", "host": ["{{baseUrl}}"], "path": ["system"] } },
+          "response": []
+        },
+        {
+          "name": "GET /debug",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/debug", "host": ["{{baseUrl}}"], "path": ["debug"] } },
+          "response": []
+        },
+        {
+          "name": "GET /internal",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/internal", "host": ["{{baseUrl}}"], "path": ["internal"] } },
+          "response": []
+        },
+        {
+          "name": "GET /v1/users",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/v1/users", "host": ["{{baseUrl}}"], "path": ["v1", "users"] } },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Docs",
+      "item": [
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/openapi.json",
+              "host": ["{{baseUrl}}"],
+              "path": ["openapi.json"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["docs"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
